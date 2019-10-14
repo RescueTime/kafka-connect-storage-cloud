@@ -82,7 +82,7 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>connect-runtime</artifactId>
-            <version>${kafka.version}</version>
+            <version>5.4.0-ccs-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

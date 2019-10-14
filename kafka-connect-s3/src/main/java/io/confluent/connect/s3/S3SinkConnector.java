@@ -57,7 +57,7 @@ public class S3SinkConnector extends SinkConnector {
   public void start(Map<String, String> props) {
     configProps = new HashMap<>(props);
     config = new S3SinkConnectorConfig(props);
-    log.info("Starting S3 connector {}", config.getName());
+    log.info("Starting RescueTime Custom S3 connector {}", config.getName());
   }
 
   @Override
