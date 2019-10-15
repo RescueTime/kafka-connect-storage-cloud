@@ -1,6 +1,64 @@
 # Kafka Connect Connector for S3
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bhttps%3A%2F%2Fgithub.com%2Fconfluentinc%2Fkafka-connect-storage-cloud.svg?type=shield)](https://app.fossa.io/projects/git%2Bhttps%3A%2F%2Fgithub.com%2Fconfluentinc%2Fkafka-connect-storage-cloud?ref=badge_shield)
 
+## Background on Writing Connectors
+
+[This article](https://opencredo.com/blogs/kafka-connect-source-connectors-a-detailed-guide-to-connecting-to-what-you-love/
+) has a lot of useful context on how to write and deploy your own connector. 
+
+[jcustonborder's github repo](https://github.com/jcustenborder/kafka-connect-transform-common) has more examples of custom connectors. 
+
+## Building the RescueTime Custom Connector
+
+This fork of Confluent's Kafka Connector project exists so that we
+can drop in our own custom Single Message Transform (SMT) that trims
+strings to lengths that can fit into Redshift's 65535-byte VARCHAR max.
+
+To build it you need a boatload of dependencies that are laid out,
+not quite correctly, at https://github.com/confluentinc/kafka-connect-storage-common/wiki/FAQ 
+-- here are the steps that I followed successfully:
+
+1. git clone git@github.com:confluentinc/common.git
+1. cd common
+1. mvn install -Dmaven.test.skip=true
+1. cd ..
+1. git clone git@github.com:confluentinc/kafka.git
+1. cd kafka
+1. Make sure this line is in build.gradle at the top:
+
+    ```apply plugin: 'maven-publish'```
+
+1. And make sure buildscript has mavenLocal():
+    ```buildscript {
+        repositories {
+          mavenLocal()
+          ...
+    ```
+1. gradle
+1. ./gradlew build publishToMavenLocal -x test
+1. cd ..
+1. git clone git@github.com:confluentinc/rest-utils.git
+1. cd rest-utils
+1. mvn install -Dmaven.test.skip=true
+1. cd ..
+1. git clone git@github.com:confluentinc/schema-registry.git
+1. cd schema-registry
+1. mvn install -Dmaven.test.skip=true
+1. cd ..
+1. git clone git@github.com:confluentinc/kafka-connect-storage-common.git
+1. cd kafka-connect-storage-common
+1. mvn install -Dmaven.test.skip=true
+1. cd ..
+1. git clone git@github.com:RescueTime/kafka-connect-storage-cloud.git (this project home)
+1. cd kafka-connect-storage-cloud
+1. mvn install -Dmaven.test.skip=true
+1. cp ./kafka-connect-s3/target/kafka-connect-s3-5.4.0-SNAPSHOT.jar ~/confluent-5.3.0/share/java/kafka-connect-s3/ 
+1. ~/confluent-5.3.0/bin/confluent local stop (if already running)
+1. ~/confluent-5.3.0/bin/confluent local start
+
+The last step assumes you have the developer version of Confluent
+installed in your home directory. If not, get it here: https://docs.confluent.io/current/quickstart/index.html
+
+# Confluent's Readme Follows
 
 *kafka-connect-storage-cloud* is the repository for Confluent's [Kafka Connectors](http://kafka.apache.org/documentation.html#connect)
 designed to be used to copy data from Kafka into Amazon S3. 
