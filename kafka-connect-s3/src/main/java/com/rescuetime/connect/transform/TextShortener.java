@@ -52,15 +52,15 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
   @SuppressWarnings("WeakerAccess")
   public static final ConfigDef CONFIG_DEF = new ConfigDef()
       .define(ConfigName.MAX_LENGTH, ConfigDef.Type.INT,
-          65535, ConfigDef.Importance.HIGH,
-          "Maximum length to allow when shortening.")
+          15000, ConfigDef.Importance.HIGH,
+          "Maximum length (in characters) to allow when shortening strings. Default: 15000.")
       .define(ConfigName.FIELDS, ConfigDef.Type.LIST,
           Collections.emptyList(), ConfigDef.Importance.HIGH,
           "Fields to be shortened. If blank, shortens all fields.");
 
   @Override
   public R apply(R record) {
-    log.info("Shortening record " + record.toString());
+    log.debug("Shortening record " + record.toString());
 
     R processedRecord;
     Schema schema = record.valueSchema();
@@ -69,7 +69,7 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
     } else {
       processedRecord = applyWithSchema(record);
     }
-    Log.info("Record after shortening: " + processedRecord.toString());
+    Log.debug("Record after shortening: " + processedRecord.toString());
     return processedRecord;
   }
 
