@@ -15,6 +15,7 @@
 
 package com.rescuetime.connect.transform;
 
+import jline.internal.Log;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -135,36 +136,36 @@ public class TextShortenerTest {
     props.put(TextShortener.ConfigName.TOPICS, "test");
     props.put(TextShortener.ConfigName.FIELDS, "details");
     xform.configure(props);
-//
-//    final Schema schema = SchemaBuilder.struct()
-//        .m("subtree",
-//            SchemaBuilder.
-//            ;
-//            .)
-//        .field("details", Schema.STRING_SCHEMA)
-//        .field("count", Schema.INT32_SCHEMA)
-//        .field("empty", Schema.OPTIONAL_INT32_SCHEMA)
-//        .build();
-//
-//    final Struct value = new Struct(schema);
-//
-//    final Map<String, Object> value = new HashMap<>();
-//    final Map<String, Object> subtree = new HashMap<>();
-//    final Map<String, Object> subsubtree = new HashMap<>();
-//    subtree.put("details", "details will be truncated after 10 chars");
-//    subsubtree.put("details", "subsubtreedetails will be truncated after 10 chars");
-//    subtree.put("subsubtree", subsubtree);
-//    value.put("subtree", subtree);
-//
-//    final SinkRecord record = new SinkRecord("test", 0, null, null, null, value, 0);
-//    final SinkRecord transformedRecord = xform.apply(record);
-//
-//    final Map updatedValue = (Map) transformedRecord.value();
-//    assertEquals(1, updatedValue.size());
-//    final Map updatedSubtree = (Map) updatedValue.get("subtree");
-//    assertEquals("details wi", updatedSubtree.get("details"));
-//    final Map updatedSubsubtree = (Map) updatedSubtree.get("subsubtree");
-//    assertEquals("subsubtree", updatedSubsubtree.get("details"));
+
+    final Schema subsubTreeSchema = SchemaBuilder.struct()
+        .field("details", Schema.STRING_SCHEMA)
+        .build();
+    final Schema subtreeSchema = SchemaBuilder.struct()
+        .field("subsubtree", subsubTreeSchema)
+        .field("details", Schema.OPTIONAL_STRING_SCHEMA)
+        .build();
+    final Schema rootSchema = SchemaBuilder.struct()
+        .field("subtree", subtreeSchema)
+        .build();
+
+    final Struct subsubTree = new Struct(subsubTreeSchema);
+    subsubTree.put("details", "1234567890 will be truncated after 10 chars");
+    final Struct subTree = new Struct(subtreeSchema);
+    subTree.put("subsubtree", subsubTree);
+    subTree.put("details", "a string on the subtree that should be trimmed");
+    final Struct root = new Struct(rootSchema);
+    root.put("subtree", subTree);
+
+    final SinkRecord record = new SinkRecord("test", 0, null, null, rootSchema, root, 0);
+    final SinkRecord transformedRecord = xform.apply(record);
+
+    final Struct updatedRoot = (Struct) transformedRecord.value();
+    final Struct updatedSubtree = (Struct) updatedRoot.get("subtree");
+    final Struct updatedSubSubtree = (Struct) updatedSubtree.get("subsubtree");
+
+    Log.info("updatedSubSubtree = " + updatedSubSubtree.toString());
+    assertEquals("1234567890", updatedSubSubtree.get("details"));
+    assertEquals("a string o", updatedSubtree.get("details"));
   }
 
 }

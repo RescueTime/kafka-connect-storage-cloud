@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.apache.kafka.connect.transforms.util.Requirements.requireMap;
-import static org.apache.kafka.connect.transforms.util.Requirements.requireStruct;
+import static org.apache.kafka.connect.transforms.util.Requirements.requireStructOrNull;
 
 public abstract class TextShortener<R extends ConnectRecord<R>> implements Transformation<R> {
 
@@ -67,7 +67,7 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
     if (schema == null) {
       processedRecord = applySchemaless(record);
     } else {
-      processedRecord = applyWithSchema(record, schema);
+      processedRecord = applyWithSchema(record);
     }
     Log.info("Record after shortening: " + processedRecord.toString());
     return processedRecord;
@@ -102,28 +102,44 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
     return topics.contains(topic) && fields.contains(fieldname);
   }
 
-  private R applyWithSchema(R record, Schema schema) {
-    final Struct value = requireStruct(record.value(), PURPOSE);
+  private R applyWithSchema(R record) {
+    final Struct value = requireStructOrNull(record.value(), PURPOSE);
+    if (value == null) {
+      return record;
+    }
+    Struct updatedValue = updateValueWithSchema(record.topic(), record.valueSchema(), value);
+    return record.newRecord(record.topic(), record.kafkaPartition(),
+        record.keySchema(), record.key(),
+        record.valueSchema(), updatedValue,
+        record.timestamp());
+  }
 
+  private Struct updateValueWithSchema(String topic, Schema schema, Struct value) {
     final Struct updatedValue = new Struct(schema);
-    for (Field field : schema.fields()) {
+
+    for (Field field : value.schema().fields()) {
       final String fieldName = field.name();
-      if (filter(record.topic(), fieldName)) {
-
-        final Object fieldValue = value.get(fieldName);
-
-        if (fieldValue instanceof String) {
-          updatedValue.put(fieldName, fieldValue.toString().substring(0, 10));
-        } else {
-          updatedValue.put(fieldName, fieldValue);
-        }
-      } else {
-        updatedValue.put(fieldName, value.get(fieldName));
+      switch (field.schema().type()) {
+        case STRING:
+          String rawValue = (String) value.get(fieldName);
+          if (rawValue != null) {
+            if (filter(topic, fieldName)) {
+              updatedValue.put(fieldName, value.get(fieldName).toString().substring(0, 10));
+            } else {
+              updatedValue.put(fieldName, rawValue);
+            }
+          } else {
+            updatedValue.put(fieldName, null);
+          }
+          break;
+        case STRUCT:
+          updatedValue.put(fieldName, updateValueWithSchema(topic, field.schema(), value.getStruct(field.name())));
+          break;
+        default:
+          updatedValue.put(field, value.get(fieldName));
       }
     }
-
-    return record.newRecord(record.topic(), record.kafkaPartition(),
-        record.keySchema(), record.key(), record.valueSchema(), updatedValue, record.timestamp());
+    return updatedValue;
   }
 
   @Override
