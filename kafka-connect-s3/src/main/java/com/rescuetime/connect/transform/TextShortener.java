@@ -40,23 +40,23 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
 
   private static final String PURPOSE = "string shortening";
 
-  private List<String> topics;
+  private Integer maxLength;
 
   private List<String> fields;
 
   public interface ConfigName {
-    String TOPICS = "topics";
+    String MAX_LENGTH = "topics";
     String FIELDS = "fields";
   }
 
   @SuppressWarnings("WeakerAccess")
   public static final ConfigDef CONFIG_DEF = new ConfigDef()
-      .define(ConfigName.TOPICS, ConfigDef.Type.LIST,
-          Collections.emptyList(), ConfigDef.Importance.HIGH,
-          "Topics to include in shortening.")
+      .define(ConfigName.MAX_LENGTH, ConfigDef.Type.INT,
+          65535, ConfigDef.Importance.HIGH,
+          "Maximum length to allow when shortening.")
       .define(ConfigName.FIELDS, ConfigDef.Type.LIST,
           Collections.emptyList(), ConfigDef.Importance.HIGH,
-          "Fields to be shortened.");
+          "Fields to be shortened. If blank, shortens all fields.");
 
   @Override
   public R apply(R record) {
@@ -77,21 +77,22 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
     final Map<String, Object> value = requireMap(record.value(), PURPOSE);
     return record.newRecord(record.topic(), record.kafkaPartition(),
         record.keySchema(), record.key(), null,
-        updateValue(value, record.topic()),
+        updateValue(value),
         record.timestamp());
   }
 
-  private Map<String, Object> updateValue(Map<String, Object> value, String topic) {
+  private Map<String, Object> updateValue(Map<String, Object> value) {
     final Map<String, Object> updatedValue = new HashMap<>(value.size());
     for (Map.Entry<String, Object> e : value.entrySet()) {
       final Object fieldValue = e.getValue();
       final String fieldName = e.getKey();
       if (fieldValue instanceof Map) {
         // recurse into map structures
-        updatedValue.put(fieldName, updateValue(requireMap(fieldValue, PURPOSE), topic));
-      } else if (fieldValue instanceof String && filter(topic, fieldName)) {
+        updatedValue.put(fieldName, updateValue(requireMap(fieldValue, PURPOSE)));
+      } else if (fieldValue instanceof String && filter(fieldName)) {
         String rawValue = fieldValue.toString();
-        updatedValue.put(fieldName, rawValue.substring(0, Math.min(10, rawValue.length())));
+        updatedValue.put(fieldName, rawValue.substring(0,
+            Math.min(maxLength, rawValue.length())));
       } else {
         updatedValue.put(fieldName, fieldValue);
       }
@@ -99,8 +100,8 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
     return updatedValue;
   }
 
-  private boolean filter(String topic, String fieldname) {
-    return topics.contains(topic) && fields.contains(fieldname);
+  private boolean filter(String fieldname) {
+    return fields.isEmpty() || fields.contains(fieldname);
   }
 
   private R applyWithSchema(R record) {
@@ -108,14 +109,14 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
     if (value == null) {
       return record;
     }
-    Struct updatedValue = updateValueWithSchema(record.topic(), record.valueSchema(), value);
+    Struct updatedValue = updateValueWithSchema(record.valueSchema(), value);
     return record.newRecord(record.topic(), record.kafkaPartition(),
         record.keySchema(), record.key(),
         record.valueSchema(), updatedValue,
         record.timestamp());
   }
 
-  private Struct updateValueWithSchema(String topic, Schema schema, Struct value) {
+  private Struct updateValueWithSchema(Schema schema, Struct value) {
     final Struct updatedValue = new Struct(schema);
 
     for (Field field : value.schema().fields()) {
@@ -124,9 +125,9 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
         case STRING:
           String rawValue = (String) value.get(fieldName);
           if (rawValue != null) {
-            if (filter(topic, fieldName)) {
+            if (filter(fieldName)) {
               updatedValue.put(fieldName, value.get(fieldName).toString()
-                  .substring(0, Math.min(10, rawValue.length())));
+                  .substring(0, Math.min(maxLength, rawValue.length())));
             } else {
               updatedValue.put(fieldName, rawValue);
             }
@@ -136,7 +137,7 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
           break;
         case STRUCT:
           updatedValue.put(fieldName,
-              updateValueWithSchema(topic, field.schema(), value.getStruct(field.name())));
+              updateValueWithSchema(field.schema(), value.getStruct(field.name())));
           break;
         default:
           updatedValue.put(field, value.get(fieldName));
@@ -152,7 +153,7 @@ public class TextShortener<R extends ConnectRecord<R>> implements Transformation
   @Override
   public void configure(Map<String, ?> configs) {
     final SimpleConfig config = new SimpleConfig(CONFIG_DEF, configs);
-    topics = config.getList(ConfigName.TOPICS);
+    maxLength = config.getInt(ConfigName.MAX_LENGTH);
     fields = config.getList(ConfigName.FIELDS);
   }
 

@@ -39,7 +39,7 @@ public class TextShortenerTest {
   @Test
   public void schemaless() {
     final Map<String, String> props = new HashMap<>();
-    props.put(TextShortener.ConfigName.TOPICS, "test");
+    props.put(TextShortener.ConfigName.MAX_LENGTH, "10");
     props.put(TextShortener.ConfigName.FIELDS, "details");
     xform.configure(props);
 
@@ -63,7 +63,7 @@ public class TextShortenerTest {
   @Test
   public void withSchema() {
     final Map<String, String> props = new HashMap<>();
-    props.put(TextShortener.ConfigName.TOPICS, "test");
+    props.put(TextShortener.ConfigName.MAX_LENGTH, "10");
     props.put(TextShortener.ConfigName.FIELDS, "details");
     xform.configure(props);
 
@@ -107,7 +107,7 @@ public class TextShortenerTest {
   @Test
   public void nestedMapNoSchema() {
     final Map<String, String> props = new HashMap<>();
-    props.put(TextShortener.ConfigName.TOPICS, "test");
+    props.put(TextShortener.ConfigName.MAX_LENGTH, "10");
     props.put(TextShortener.ConfigName.FIELDS, "details");
     xform.configure(props);
 
@@ -133,7 +133,7 @@ public class TextShortenerTest {
   @Test
   public void nestedMapWithSchema() {
     final Map<String, String> props = new HashMap<>();
-    props.put(TextShortener.ConfigName.TOPICS, "test");
+    props.put(TextShortener.ConfigName.MAX_LENGTH, "10");
     props.put(TextShortener.ConfigName.FIELDS, "details");
     xform.configure(props);
 
