@@ -29,7 +29,7 @@ import java.util.Map;
 import static org.junit.Assert.*;
 
 public class TextShortenerTest {
-  private TextShortener<SinkRecord> xform = new TextShortener.Value<>();
+  private TextShortener<SinkRecord> xform = new TextShortener<>();
 
   @After
   public void teardown() {
@@ -105,7 +105,7 @@ public class TextShortenerTest {
   }
 
   @Test
-  public void schemalessNestedMap() {
+  public void nestedMapNoSchema() {
     final Map<String, String> props = new HashMap<>();
     props.put(TextShortener.ConfigName.TOPICS, "test");
     props.put(TextShortener.ConfigName.FIELDS, "details");
@@ -114,7 +114,7 @@ public class TextShortenerTest {
     final Map<String, Object> value = new HashMap<>();
     final Map<String, Object> subtree = new HashMap<>();
     final Map<String, Object> subsubtree = new HashMap<>();
-    subtree.put("details", "details will be truncated after 10 chars");
+    subtree.put("details", "short");
     subsubtree.put("details", "subsubtreedetails will be truncated after 10 chars");
     subtree.put("subsubtree", subsubtree);
     value.put("subtree", subtree);
@@ -125,7 +125,7 @@ public class TextShortenerTest {
     final Map updatedValue = (Map) transformedRecord.value();
     assertEquals(1, updatedValue.size());
     final Map updatedSubtree = (Map) updatedValue.get("subtree");
-    assertEquals("details wi", updatedSubtree.get("details"));
+    assertEquals("short", updatedSubtree.get("details"));
     final Map updatedSubsubtree = (Map) updatedSubtree.get("subsubtree");
     assertEquals("subsubtree", updatedSubsubtree.get("details"));
   }
@@ -149,7 +149,7 @@ public class TextShortenerTest {
         .build();
 
     final Struct subsubTree = new Struct(subsubTreeSchema);
-    subsubTree.put("details", "1234567890 will be truncated after 10 chars");
+    subsubTree.put("details", "short");
     final Struct subTree = new Struct(subtreeSchema);
     subTree.put("subsubtree", subsubTree);
     subTree.put("details", "a string on the subtree that should be trimmed");
@@ -164,7 +164,7 @@ public class TextShortenerTest {
     final Struct updatedSubSubtree = (Struct) updatedSubtree.get("subsubtree");
 
     Log.info("updatedSubSubtree = " + updatedSubSubtree.toString());
-    assertEquals("1234567890", updatedSubSubtree.get("details"));
+    assertEquals("short", updatedSubSubtree.get("details"));
     assertEquals("a string o", updatedSubtree.get("details"));
   }
 

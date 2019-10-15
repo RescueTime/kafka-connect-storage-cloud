@@ -34,7 +34,7 @@ import java.util.Map;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireMap;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireStructOrNull;
 
-public abstract class TextShortener<R extends ConnectRecord<R>> implements Transformation<R> {
+public class TextShortener<R extends ConnectRecord<R>> implements Transformation<R> {
 
   private static final Logger log = LoggerFactory.getLogger(TextShortener.class);
 
@@ -44,18 +44,18 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
 
   private List<String> fields;
 
-  TextShortener() {
-  }
-
-  interface ConfigName {
+  public interface ConfigName {
     String TOPICS = "topics";
     String FIELDS = "fields";
   }
 
-  private static final ConfigDef CONFIG_DEF = new ConfigDef()
-      .define(ConfigName.TOPICS, ConfigDef.Type.LIST, Collections.emptyList(), ConfigDef.Importance.HIGH,
+  @SuppressWarnings("WeakerAccess")
+  public static final ConfigDef CONFIG_DEF = new ConfigDef()
+      .define(ConfigName.TOPICS, ConfigDef.Type.LIST,
+          Collections.emptyList(), ConfigDef.Importance.HIGH,
           "Topics to include in shortening.")
-      .define(ConfigName.FIELDS, ConfigDef.Type.LIST, Collections.emptyList(), ConfigDef.Importance.HIGH,
+      .define(ConfigName.FIELDS, ConfigDef.Type.LIST,
+          Collections.emptyList(), ConfigDef.Importance.HIGH,
           "Fields to be shortened.");
 
   @Override
@@ -90,7 +90,8 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
         // recurse into map structures
         updatedValue.put(fieldName, updateValue(requireMap(fieldValue, PURPOSE), topic));
       } else if (fieldValue instanceof String && filter(topic, fieldName)) {
-        updatedValue.put(fieldName, fieldValue.toString().substring(0, 10));
+        String rawValue = fieldValue.toString();
+        updatedValue.put(fieldName, rawValue.substring(0, Math.min(10, rawValue.length())));
       } else {
         updatedValue.put(fieldName, fieldValue);
       }
@@ -124,7 +125,8 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
           String rawValue = (String) value.get(fieldName);
           if (rawValue != null) {
             if (filter(topic, fieldName)) {
-              updatedValue.put(fieldName, value.get(fieldName).toString().substring(0, 10));
+              updatedValue.put(fieldName, value.get(fieldName).toString()
+                  .substring(0, Math.min(10, rawValue.length())));
             } else {
               updatedValue.put(fieldName, rawValue);
             }
@@ -133,7 +135,8 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
           }
           break;
         case STRUCT:
-          updatedValue.put(fieldName, updateValueWithSchema(topic, field.schema(), value.getStruct(field.name())));
+          updatedValue.put(fieldName,
+              updateValueWithSchema(topic, field.schema(), value.getStruct(field.name())));
           break;
         default:
           updatedValue.put(field, value.get(fieldName));
@@ -158,11 +161,4 @@ public abstract class TextShortener<R extends ConnectRecord<R>> implements Trans
     return CONFIG_DEF;
   }
 
-  static class Key<R extends ConnectRecord<R>> extends TextShortener<R> {
-
-  }
-
-  static class Value<R extends ConnectRecord<R>> extends TextShortener<R> {
-
-  }
 }
