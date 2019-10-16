@@ -58,6 +58,10 @@ not quite correctly, at https://github.com/confluentinc/kafka-connect-storage-co
 The last step assumes you have the developer version of Confluent
 installed in your home directory. If not, get it here: https://docs.confluent.io/current/quickstart/index.html
 
+Once ready to ship the jar, put it in the rt-playbooks project, which is how it gets on the Kafka brokers:
+1. cp ./kafka-connect-s3/target/kafka-connect-s3-5.4.0-SNAPSHOT.jar ~/dev/rt-playbooks/kafka/roles/confluent.kafka_connect/files/ 
+
+Then run the appropriate ansible playbook to deploy Kafka. 
 # Confluent's Readme Follows
 
 *kafka-connect-storage-cloud* is the repository for Confluent's [Kafka Connectors](http://kafka.apache.org/documentation.html#connect)
