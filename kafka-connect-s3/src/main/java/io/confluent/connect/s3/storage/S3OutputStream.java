@@ -81,16 +81,21 @@ public class S3OutputStream extends PositionOutputStream {
     this.partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
+
+    // TODO replace with a MappedByteBuffer?
+    // https://www.tothenew.com/blog/handling-large-files-using-javanio-mappedbytebuffer/
     this.buffer = ByteBuffer.allocate(this.partSize);
+
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
     this.position = 0L;
-    log.debug("Create S3OutputStream for bucket '{}' key '{}'", bucket, key);
+    log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}", bucket, key, partSize);
   }
 
   @Override
   public void write(int b) throws IOException {
+    log.info("Writing a single byte");
     buffer.put((byte) b);
     if (!buffer.hasRemaining()) {
       uploadPart();
@@ -100,6 +105,7 @@ public class S3OutputStream extends PositionOutputStream {
 
   @Override
   public void write(byte[] b, int off, int len) throws IOException {
+    log.info("Writing an array of bytes");
     if (b == null) {
       throw new NullPointerException();
     } else if (outOfRange(off, b.length) || len < 0 || outOfRange(off + len, b.length)) {
@@ -130,8 +136,9 @@ public class S3OutputStream extends PositionOutputStream {
   }
 
   private void uploadPart(final int size) throws IOException {
+    log.info("Uploading part of size {} for bucket '{}' key '{}'", size, bucket, key);
     if (multiPartUpload == null) {
-      log.debug("New multi-part upload for bucket '{}' key '{}'", bucket, key);
+      log.info("New multi-part upload for bucket '{}' key '{}'", bucket, key);
       multiPartUpload = newMultipartUpload();
     }
     try {
@@ -139,13 +146,14 @@ public class S3OutputStream extends PositionOutputStream {
     } catch (Exception e) {
       if (multiPartUpload != null) {
         multiPartUpload.abort();
-        log.debug("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
+        log.info("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
       }
       throw new IOException("Part upload failed: ", e.getCause());
     }
   }
 
   public void commit() throws IOException {
+    log.info("commit() called for bucket '{}' key '{}'", bucket, key);
     if (closed) {
       log.warn(
           "Tried to commit data for bucket '{}' key '{}' on a closed stream. Ignoring.",
@@ -161,7 +169,7 @@ public class S3OutputStream extends PositionOutputStream {
         uploadPart(buffer.position());
       }
       multiPartUpload.complete();
-      log.debug("Upload complete for bucket '{}' key '{}'", bucket, key);
+      log.info("Upload complete for bucket '{}' key '{}'", bucket, key);
     } catch (Exception e) {
       log.error("Multipart upload failed to complete for bucket '{}' key '{}'", bucket, key);
       throw new DataException("Multipart upload failed to complete.", e);
@@ -184,7 +192,7 @@ public class S3OutputStream extends PositionOutputStream {
     closed = true;
     if (multiPartUpload != null) {
       multiPartUpload.abort();
-      log.debug("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
+      log.info("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
     }
     super.close();
   }
