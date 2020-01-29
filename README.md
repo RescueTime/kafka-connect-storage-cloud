@@ -17,10 +17,6 @@ To build it you need a boatload of dependencies that are laid out,
 not quite correctly, at https://github.com/confluentinc/kafka-connect-storage-common/wiki/FAQ 
 -- here are the steps that I followed successfully:
 
-1. git clone git@github.com:confluentinc/common.git
-1. cd common
-1. mvn install -Dmaven.test.skip=true
-1. cd ..
 1. git clone git@github.com:confluentinc/kafka.git
 1. cd kafka
 1. Make sure this line is in build.gradle at the top:
@@ -34,7 +30,12 @@ not quite correctly, at https://github.com/confluentinc/kafka-connect-storage-co
           ...
     ```
 1. gradle
+1. ./gradlew installAll
 1. ./gradlew build publishToMavenLocal -x test
+1. cd ..
+1. git clone git@github.com:confluentinc/common.git
+1. cd common
+1. mvn install -Dmaven.test.skip=true
 1. cd ..
 1. git clone git@github.com:confluentinc/rest-utils.git
 1. cd rest-utils
