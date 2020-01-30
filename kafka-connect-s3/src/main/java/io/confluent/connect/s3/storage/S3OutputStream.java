@@ -327,6 +327,7 @@ public class S3OutputStream extends PositionOutputStream {
 
     public ByteBufferBackedInputStream(MappedByteBuffer buf) {
       this.buf = buf;
+      this.buf.rewind();
     }
 
     public int read() throws IOException {
