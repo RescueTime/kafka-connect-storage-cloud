@@ -36,10 +36,14 @@ import org.apache.parquet.io.PositionOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
+import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,7 +65,7 @@ public class S3OutputStream extends PositionOutputStream {
   private final int partSize;
   private final CannedAccessControlList cannedAcl;
   private boolean closed;
-  private ByteBuffer buffer;
+  private MappedByteBuffer buffer;
   private MultipartUpload multiPartUpload;
   private final CompressionType compressionType;
   private volatile OutputStream compressionFilter;
@@ -76,15 +80,34 @@ public class S3OutputStream extends PositionOutputStream {
     final String sseCustomerKeyConfig = conf.getSseCustomerKey();
     this.sseCustomerKey = (SSEAlgorithm.AES256.toString().equalsIgnoreCase(ssea)
         && StringUtils.isNotBlank(sseCustomerKeyConfig))
-      ? new SSECustomerKey(sseCustomerKeyConfig) : null;
+        ? new SSECustomerKey(sseCustomerKeyConfig) : null;
     this.sseKmsKeyId = conf.getSseKmsKeyId();
     this.partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
 
-    // TODO replace with a MappedByteBuffer?
+    // TODO handle file that already exists. Also clean up files once they're committed.
     // https://www.tothenew.com/blog/handling-large-files-using-javanio-mappedbytebuffer/
-    this.buffer = ByteBuffer.allocate(this.partSize);
+    // https://howtodoinjava.com/java7/nio/memory-mapped-files-mappedbytebuffer/
+    String filename = "/tmp/"
+        + bucket.replaceAll("/", "-") + "-"
+        + key.replaceAll("/", "-") + ".buffer";
+    try {
+      File file = new java.io.File(filename);
+      if (file.createNewFile()) {
+        RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw");
+        this.buffer = randomAccessFile.getChannel().map(
+            FileChannel.MapMode.READ_WRITE, 0, partSize);
+      } else {
+        throw new RuntimeException("File could not be created: " + filename);
+      }
+    } catch (FileNotFoundException fnfe) {
+      log.error("FileNotFoundException opening file: " + filename);
+      throw new RuntimeException(fnfe);
+    } catch (IOException ioe) {
+      log.error("IOException opening file: " + filename);
+      throw new RuntimeException(ioe);
+    }
 
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
@@ -142,7 +165,7 @@ public class S3OutputStream extends PositionOutputStream {
       multiPartUpload = newMultipartUpload();
     }
     try {
-      multiPartUpload.uploadPart(new ByteArrayInputStream(buffer.array()), size);
+      multiPartUpload.uploadPart(new ByteBufferBackedInputStream(buffer), size);
     } catch (Exception e) {
       if (multiPartUpload != null) {
         multiPartUpload.abort();
@@ -245,17 +268,17 @@ public class S3OutputStream extends PositionOutputStream {
       );
     }
 
-    public void uploadPart(ByteArrayInputStream inputStream, int partSize) {
+    public void uploadPart(InputStream inputStream, int partSize) {
       int currentPartNumber = partETags.size() + 1;
       UploadPartRequest request = new UploadPartRequest()
-                                            .withBucketName(bucket)
-                                            .withKey(key)
-                                            .withUploadId(uploadId)
-                                            .withSSECustomerKey(sseCustomerKey)
-                                            .withInputStream(inputStream)
-                                            .withPartNumber(currentPartNumber)
-                                            .withPartSize(partSize)
-                                            .withGeneralProgressListener(progressListener);
+          .withBucketName(bucket)
+          .withKey(key)
+          .withUploadId(uploadId)
+          .withSSECustomerKey(sseCustomerKey)
+          .withInputStream(inputStream)
+          .withPartNumber(currentPartNumber)
+          .withPartSize(partSize)
+          .withGeneralProgressListener(progressListener);
       log.debug("Uploading part {} for id '{}'", currentPartNumber, uploadId);
       partETags.add(s3.uploadPart(request).getPartETag());
     }
@@ -296,4 +319,33 @@ public class S3OutputStream extends PositionOutputStream {
   public long getPos() {
     return position;
   }
+
+  // copied from https://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-an-inputstream
+  public class ByteBufferBackedInputStream extends InputStream {
+
+    MappedByteBuffer buf;
+
+    public ByteBufferBackedInputStream(MappedByteBuffer buf) {
+      this.buf = buf;
+    }
+
+    public int read() throws IOException {
+      if (!buf.hasRemaining()) {
+        return -1;
+      }
+      return buf.get() & 0xFF;
+    }
+
+    public int read(byte[] bytes, int off, int len)
+        throws IOException {
+      if (!buf.hasRemaining()) {
+        return -1;
+      }
+
+      len = Math.min(len, buf.remaining());
+      buf.get(bytes, off, len);
+      return len;
+    }
+  }
+
 }
