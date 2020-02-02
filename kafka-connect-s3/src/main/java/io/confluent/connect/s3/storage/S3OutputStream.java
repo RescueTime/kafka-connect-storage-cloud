@@ -35,15 +35,12 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.parquet.io.PositionOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sun.misc.Cleaner;
 
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -65,7 +62,7 @@ public class S3OutputStream extends PositionOutputStream {
   private final int partSize;
   private final CannedAccessControlList cannedAcl;
   private boolean closed;
-  private MappedByteBuffer buffer;
+  private ChunkedDiskBuffer buffer;
   private MultipartUpload multiPartUpload;
   private final CompressionType compressionType;
   private volatile OutputStream compressionFilter;
@@ -85,30 +82,7 @@ public class S3OutputStream extends PositionOutputStream {
     this.partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
-
-    // TODO handle file that already exists. Also clean up files once they're committed.
-    // https://www.tothenew.com/blog/handling-large-files-using-javanio-mappedbytebuffer/
-    // https://howtodoinjava.com/java7/nio/memory-mapped-files-mappedbytebuffer/
-    String filename = "/tmp/"
-        + bucket.replaceAll("/", "-") + "-"
-        + key.replaceAll("/", "-") + ".buffer";
-    try {
-      File file = new java.io.File(filename);
-      if (file.createNewFile()) {
-        RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw");
-        this.buffer = randomAccessFile.getChannel().map(
-            FileChannel.MapMode.READ_WRITE, 0, partSize);
-      } else {
-        throw new RuntimeException("File could not be created: " + filename);
-      }
-    } catch (FileNotFoundException fnfe) {
-      log.error("FileNotFoundException opening file: " + filename);
-      throw new RuntimeException(fnfe);
-    } catch (IOException ioe) {
-      log.error("IOException opening file: " + filename);
-      throw new RuntimeException(ioe);
-    }
-
+    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, this.partSize);
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
@@ -116,14 +90,15 @@ public class S3OutputStream extends PositionOutputStream {
     log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}", bucket, key, partSize);
   }
 
+  // TODO
   @Override
   public void write(int b) throws IOException {
     log.info("Writing a single byte");
-    buffer.put((byte) b);
-    if (!buffer.hasRemaining()) {
-      uploadPart();
-    }
-    position++;
+//    buffer.put((byte) b);
+//    if (!buffer.hasRemaining()) {
+//      uploadPart();
+//    }
+//    position++;
   }
 
   @Override
@@ -137,35 +112,45 @@ public class S3OutputStream extends PositionOutputStream {
       return;
     }
 
-    if (buffer.remaining() <= len) {
-      int firstPart = buffer.remaining();
-      buffer.put(b, off, firstPart);
-      position += firstPart;
-      uploadPart();
-      write(b, off + firstPart, len - firstPart);
-    } else {
-      buffer.put(b, off, len);
-      position += len;
-    }
+    // TODO
+//
+//    if (buffer.remaining() <= len) {
+//      int firstPart = buffer.remaining();
+//      buffer.put(b, off, firstPart);
+//      position += firstPart;
+//      uploadPart();
+//      write(b, off + firstPart, len - firstPart);
+//    } else {
+//      buffer.put(b, off, len);
+//      position += len;
+//    }
   }
 
   private static boolean outOfRange(int off, int len) {
     return off < 0 || off > len;
   }
 
+  // TODO
   private void uploadPart() throws IOException {
-    uploadPart(partSize);
-    buffer.clear();
+//    uploadPart(partSize);
+//    buffer.clear();
   }
 
   private void uploadPart(final int size) throws IOException {
     log.info("Uploading part of size {} for bucket '{}' key '{}'", size, bucket, key);
+
+    // TODO
+//    if (bufferFile == null) {
+//      initBuffer();
+//    }
+
     if (multiPartUpload == null) {
       log.info("New multi-part upload for bucket '{}' key '{}'", bucket, key);
       multiPartUpload = newMultipartUpload();
     }
     try {
-      multiPartUpload.uploadPart(new ByteBufferBackedInputStream(buffer), size);
+      // TODO
+//      multiPartUpload.uploadPart(new ByteBufferBackedInputStream(buffer), size);
     } catch (Exception e) {
       if (multiPartUpload != null) {
         multiPartUpload.abort();
@@ -188,17 +173,20 @@ public class S3OutputStream extends PositionOutputStream {
 
     try {
       compressionType.finalize(compressionFilter);
-      if (buffer.hasRemaining()) {
-        uploadPart(buffer.position());
-      }
+
+      // TODO
+//      if (buffer.hasRemaining()) {
+//        uploadPart(buffer.position());
+//      }
       multiPartUpload.complete();
       log.info("Upload complete for bucket '{}' key '{}'", bucket, key);
     } catch (Exception e) {
       log.error("Multipart upload failed to complete for bucket '{}' key '{}'", bucket, key);
       throw new DataException("Multipart upload failed to complete.", e);
     } finally {
-      buffer.clear();
-      multiPartUpload = null;
+      // TODO
+//      buffer.clear();
+      closeBuffer();
       internalClose();
     }
   }
@@ -218,6 +206,11 @@ public class S3OutputStream extends PositionOutputStream {
       log.info("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
     }
     super.close();
+  }
+
+  private void closeBuffer() throws IOException {
+    multiPartUpload = null;
+    buffer.closeBuffer();
   }
 
   private ObjectMetadata newObjectMetadata() {
