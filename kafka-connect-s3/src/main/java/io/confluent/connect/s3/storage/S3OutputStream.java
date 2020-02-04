@@ -35,7 +35,6 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.parquet.io.PositionOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sun.misc.Cleaner;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -210,7 +209,7 @@ public class S3OutputStream extends PositionOutputStream {
 
   private void closeBuffer() throws IOException {
     multiPartUpload = null;
-    buffer.closeBuffer();
+    buffer.close();
   }
 
   private ObjectMetadata newObjectMetadata() {

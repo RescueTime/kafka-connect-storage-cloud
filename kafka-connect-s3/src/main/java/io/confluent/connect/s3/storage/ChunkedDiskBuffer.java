@@ -14,25 +14,25 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 
+@SuppressWarnings("RedundantThrows")
 public class ChunkedDiskBuffer {
   private static final Logger log = LoggerFactory.getLogger(ChunkedDiskBuffer.class);
 
-  String filename;
+  private String fileNameRoot;
   List<Chunk> chunks = new ArrayList<>();
   private int chunkSize;
   private int currentChunkID = 0;
-  private Long position;
 
-  public ChunkedDiskBuffer(String bucket, String key, int chunkSize) {
+  ChunkedDiskBuffer(String bucket, String key, int chunkSize) {
     this.chunkSize = chunkSize;
-    filename = "/tmp/"
+    // TODO configurable location for tmp
+    fileNameRoot = "/tmp/"
         + bucket.replaceAll("/", "-") + "-"
         + key.replaceAll("/", "-") + ".buffer";
-    position = 0L;
     chunks.add(new Chunk(currentChunkID));
   }
 
-  void closeBuffer() throws IOException {
+  void close() throws IOException {
     for (Chunk chunk : chunks) {
       chunk.close();
     }
@@ -45,11 +45,35 @@ public class ChunkedDiskBuffer {
       currentChunkID++;
       chunks.add(new Chunk(currentChunkID));
     }
-    position++;
+  }
+
+  public void write(byte[] b, int off, int len) throws IOException {
+    log.info("Writing an array of bytes");
+    if (b == null) {
+      throw new NullPointerException();
+    } else if (outOfRange(off, b.length) || len < 0 || outOfRange(off + len, b.length)) {
+      throw new IndexOutOfBoundsException();
+    } else if (len == 0) {
+      return;
+    }
+
+    if (chunks.get(currentChunkID).buffer.remaining() <= len) {
+      int firstPart = chunks.get(currentChunkID).buffer.remaining();
+      chunks.get(currentChunkID).buffer.put(b, off, firstPart);
+      currentChunkID++;
+      chunks.add(new Chunk(currentChunkID));
+      write(b, off + firstPart, len - firstPart);
+    } else {
+      chunks.get(currentChunkID).buffer.put(b, off, len);
+    }
+  }
+
+  private static boolean outOfRange(int off, int len) {
+    return off < 0 || off > len;
   }
 
   ByteBufferBackedInputStream getInputStream() {
-    return new ByteBufferBackedInputStream(chunks.get(currentChunkID).buffer);
+    return new ByteBufferBackedInputStream();
   }
 
   public class Chunk {
@@ -59,16 +83,16 @@ public class ChunkedDiskBuffer {
     private RandomAccessFile bufferRandomAccessFile;
     private FileChannel bufferFileChannel;
 
-    public Chunk(int id) {
+    Chunk(int id) {
       // https://www.tothenew.com/blog/handling-large-files-using-javanio-mappedbytebuffer/
       // https://howtodoinjava.com/java7/nio/memory-mapped-files-mappedbytebuffer/
       this.id = id;
-      log.info("Trying to init new MappedByteBuffer Chunk on {}", getFilename());
+      log.info("Trying to init new MappedByteBuffer Chunk on {}", filename());
       try {
-        bufferFile = new java.io.File(getFilename());
+        bufferFile = new java.io.File(filename());
         if (bufferFile.exists()) {
           boolean deleted = bufferFile.delete();
-          log.info("File {} already exists, deleted? {}", getFilename(), deleted);
+          log.info("File {} already exists, deleted? {}", filename(), deleted);
         }
         if (bufferFile.createNewFile()) {
           bufferRandomAccessFile = new RandomAccessFile(bufferFile, "rw");
@@ -76,25 +100,27 @@ public class ChunkedDiskBuffer {
           this.buffer = bufferFileChannel.map(
               FileChannel.MapMode.READ_WRITE, 0, chunkSize);
         } else {
-          throw new RuntimeException("File could not be created: " + getFilename());
+          throw new RuntimeException("File could not be created: " + filename());
         }
       } catch (FileNotFoundException fnfe) {
-        log.error("FileNotFoundException opening file: " + getFilename());
+        log.error("FileNotFoundException opening file: " + filename());
         throw new RuntimeException(fnfe);
       } catch (IOException ioe) {
-        log.error("IOException opening file: " + getFilename());
+        log.error("IOException opening file: " + filename());
         throw new RuntimeException(ioe);
       }
       log.info("MappedByteBuffer Chunk was successfully initialized");
     }
 
-    String getFilename() {
-      return ChunkedDiskBuffer.this.filename + "." + id;
+    String filename() {
+      return ChunkedDiskBuffer.this.fileNameRoot + "." + id;
     }
 
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     void close() throws IOException {
       try {
         buffer.clear();
+        // make sure JVM deallocates mapped buffer so we can delete file
         Cleaner cleaner = ((sun.nio.ch.DirectBuffer) buffer).cleaner();
         if (cleaner != null) {
           cleaner.clean();
@@ -111,32 +137,68 @@ public class ChunkedDiskBuffer {
     }
   }
 
-  // copied from https://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-an-inputstream
+  // adapted from https://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-an-inputstream
+  @SuppressWarnings({"RedundantThrows", "NullableProblems"})
   public class ByteBufferBackedInputStream extends InputStream {
 
-    MappedByteBuffer buf;
+    int currentReadingChunk = 0;
+    int numBytesRead = 0;
 
-    public ByteBufferBackedInputStream(MappedByteBuffer buf) {
-      this.buf = buf;
-      this.buf.rewind();
+    ByteBufferBackedInputStream() {
+      current().rewind();
+    }
+
+    MappedByteBuffer current() {
+      return chunks.get(currentReadingChunk).buffer;
     }
 
     public int read() throws IOException {
-      if (!buf.hasRemaining()) {
+      try {
+        if (!current().hasRemaining()) {
+          // try the next chunk if this one has no more
+          currentReadingChunk++;
+          current().rewind();
+          if (!current().hasRemaining()) {
+            return -1;
+          }
+        }
+      } catch (IndexOutOfBoundsException e) {
         return -1;
       }
-      return buf.get() & 0xFF;
+      return current().get() & 0xFF;
     }
 
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     public int read(byte[] bytes, int off, int len)
         throws IOException {
-      if (!buf.hasRemaining()) {
+      try {
+        if (!current().hasRemaining()) {
+          // try the next chunk if this one has no more
+          currentReadingChunk++;
+          current().rewind();
+          if (!current().hasRemaining()) {
+            return -1;
+          }
+        }
+      } catch (IndexOutOfBoundsException e) {
+        // don't go past the end!
         return -1;
       }
 
-      len = Math.min(len, buf.remaining());
-      buf.get(bytes, off, len);
-      return len;
+      // when looping through our chunks:
+      // bytes = our input array (never changed)
+      // len = remaining bytes in current chunk, up to chunk size
+      // off = chunk size * current chunk id
+      int lengthThisChunk = Math.min(len, current().remaining());
+      off = currentReadingChunk * chunkSize;
+      current().get(bytes, off, lengthThisChunk);
+      numBytesRead += lengthThisChunk;
+
+      if (numBytesRead > 0 && numBytesRead < bytes.length) {
+        read(bytes, currentReadingChunk * chunkSize, len);
+      }
+
+      return numBytesRead;
     }
   }
 
