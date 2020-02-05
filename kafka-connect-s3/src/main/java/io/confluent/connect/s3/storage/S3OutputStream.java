@@ -81,68 +81,26 @@ public class S3OutputStream extends PositionOutputStream {
     this.partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
-    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, this.partSize);
+    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, this.partSize, 5); // TODO
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
-    this.position = 0L;
     log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}", bucket, key, partSize);
   }
 
-  // TODO
   @Override
   public void write(int b) throws IOException {
     log.info("Writing a single byte");
-//    buffer.put((byte) b);
-//    if (!buffer.hasRemaining()) {
-//      uploadPart();
-//    }
-//    position++;
+    buffer.write((byte) b);
   }
 
   @Override
   public void write(byte[] b, int off, int len) throws IOException {
-    log.info("Writing an array of bytes");
-    if (b == null) {
-      throw new NullPointerException();
-    } else if (outOfRange(off, b.length) || len < 0 || outOfRange(off + len, b.length)) {
-      throw new IndexOutOfBoundsException();
-    } else if (len == 0) {
-      return;
-    }
-
-    // TODO
-//
-//    if (buffer.remaining() <= len) {
-//      int firstPart = buffer.remaining();
-//      buffer.put(b, off, firstPart);
-//      position += firstPart;
-//      uploadPart();
-//      write(b, off + firstPart, len - firstPart);
-//    } else {
-//      buffer.put(b, off, len);
-//      position += len;
-//    }
-  }
-
-  private static boolean outOfRange(int off, int len) {
-    return off < 0 || off > len;
-  }
-
-  // TODO
-  private void uploadPart() throws IOException {
-//    uploadPart(partSize);
-//    buffer.clear();
+    buffer.write(b, off, len);
   }
 
   private void uploadPart(final int size) throws IOException {
     log.info("Uploading part of size {} for bucket '{}' key '{}'", size, bucket, key);
-
-    // TODO
-//    if (bufferFile == null) {
-//      initBuffer();
-//    }
-
     if (multiPartUpload == null) {
       log.info("New multi-part upload for bucket '{}' key '{}'", bucket, key);
       multiPartUpload = newMultipartUpload();
@@ -171,6 +129,7 @@ public class S3OutputStream extends PositionOutputStream {
     }
 
     try {
+      // TODO should maybe apply compression inside the ChunkedDiskBuffer instead of here
       compressionType.finalize(compressionFilter);
 
       // TODO
@@ -183,8 +142,6 @@ public class S3OutputStream extends PositionOutputStream {
       log.error("Multipart upload failed to complete for bucket '{}' key '{}'", bucket, key);
       throw new DataException("Multipart upload failed to complete.", e);
     } finally {
-      // TODO
-//      buffer.clear();
       closeBuffer();
       internalClose();
     }
@@ -310,35 +267,6 @@ public class S3OutputStream extends PositionOutputStream {
 
   public long getPos() {
     return position;
-  }
-
-  // copied from https://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-an-inputstream
-  public class ByteBufferBackedInputStream extends InputStream {
-
-    MappedByteBuffer buf;
-
-    public ByteBufferBackedInputStream(MappedByteBuffer buf) {
-      this.buf = buf;
-      this.buf.rewind();
-    }
-
-    public int read() throws IOException {
-      if (!buf.hasRemaining()) {
-        return -1;
-      }
-      return buf.get() & 0xFF;
-    }
-
-    public int read(byte[] bytes, int off, int len)
-        throws IOException {
-      if (!buf.hasRemaining()) {
-        return -1;
-      }
-
-      len = Math.min(len, buf.remaining());
-      buf.get(bytes, off, len);
-      return len;
-    }
   }
 
 }
