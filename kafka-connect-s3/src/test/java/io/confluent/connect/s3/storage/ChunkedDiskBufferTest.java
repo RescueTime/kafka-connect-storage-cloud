@@ -43,7 +43,8 @@ public class ChunkedDiskBufferTest {
   @Test
   public void testWriting() throws Exception {
     buffer.write((int) 'p');
-    InputStreamReader inputStreamReader = new InputStreamReader(buffer.getInputStream());
+    buffer.rewind();
+    InputStreamReader inputStreamReader = new InputStreamReader(buffer);
     File bufferFile = new java.io.File(buffer.chunks.get(0).filename());
     char[] charArray = new char[(int) bufferFile.length()];
     int numRead = inputStreamReader.read(charArray);
@@ -80,7 +81,8 @@ public class ChunkedDiskBufferTest {
 
     assertEquals(6, buffer.chunks.size());
 
-    InputStreamReader inputStreamReader = new InputStreamReader(buffer.getInputStream());
+    buffer.rewind();
+    InputStreamReader inputStreamReader = new InputStreamReader(buffer);
     char[] charArray = new char[50];
     int numRead = inputStreamReader.read(charArray);
     assertEquals(50, numRead);

@@ -14,14 +14,18 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 
-@SuppressWarnings("RedundantThrows")
-public class ChunkedDiskBuffer {
+
+// adapted from https://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-an-inputstream
+@SuppressWarnings({"RedundantThrows", "NullableProblems"})
+public class ChunkedDiskBuffer extends InputStream {
   private static final Logger log = LoggerFactory.getLogger(ChunkedDiskBuffer.class);
 
   private String fileNameRoot;
   List<Chunk> chunks = new ArrayList<>();
   private int chunkSize;
   private int currentChunkID = 0;
+  private int currentReadingChunk = 0;
+  private int numBytesRead = 0;
 
   ChunkedDiskBuffer(String bucket, String key, int chunkSize) {
     this.chunkSize = chunkSize;
@@ -32,7 +36,8 @@ public class ChunkedDiskBuffer {
     chunks.add(new Chunk(currentChunkID));
   }
 
-  void close() throws IOException {
+  @Override
+  public void close() throws IOException {
     for (Chunk chunk : chunks) {
       chunk.close();
     }
@@ -72,9 +77,63 @@ public class ChunkedDiskBuffer {
     return off < 0 || off > len;
   }
 
-  ByteBufferBackedInputStream getInputStream() {
-    return new ByteBufferBackedInputStream();
+  public void rewind() {
+    current().rewind();
   }
+
+  private MappedByteBuffer current() {
+    return chunks.get(currentReadingChunk).buffer;
+  }
+
+  public int read() throws IOException {
+    try {
+      if (!current().hasRemaining()) {
+        // try the next chunk if this one has no more
+        currentReadingChunk++;
+        current().rewind();
+        if (!current().hasRemaining()) {
+          return -1;
+        }
+      }
+    } catch (IndexOutOfBoundsException e) {
+      return -1;
+    }
+    return current().get() & 0xFF;
+  }
+
+  @SuppressWarnings("ResultOfMethodCallIgnored")
+  public int read(byte[] bytes, int off, int len)
+      throws IOException {
+    try {
+      if (!current().hasRemaining()) {
+        // try the next chunk if this one has no more
+        currentReadingChunk++;
+        current().rewind();
+        if (!current().hasRemaining()) {
+          return -1;
+        }
+      }
+    } catch (IndexOutOfBoundsException e) {
+      // don't go past the end!
+      return -1;
+    }
+
+    // when looping through our chunks:
+    // bytes = our input array (never changed)
+    // len = remaining bytes in current chunk, up to chunk size
+    // off = chunk size * current chunk id
+    int lengthThisChunk = Math.min(len, current().remaining());
+    off = currentReadingChunk * chunkSize;
+    current().get(bytes, off, lengthThisChunk);
+    numBytesRead += lengthThisChunk;
+
+    if (numBytesRead > 0 && numBytesRead < bytes.length) {
+      read(bytes, currentReadingChunk * chunkSize, len);
+    }
+
+    return numBytesRead;
+  }
+
 
   public class Chunk {
     private int id;
@@ -134,71 +193,6 @@ public class ChunkedDiskBuffer {
         bufferFileChannel = null;
         buffer = null;
       }
-    }
-  }
-
-  // adapted from https://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-an-inputstream
-  @SuppressWarnings({"RedundantThrows", "NullableProblems"})
-  public class ByteBufferBackedInputStream extends InputStream {
-
-    int currentReadingChunk = 0;
-    int numBytesRead = 0;
-
-    ByteBufferBackedInputStream() {
-      current().rewind();
-    }
-
-    MappedByteBuffer current() {
-      return chunks.get(currentReadingChunk).buffer;
-    }
-
-    public int read() throws IOException {
-      try {
-        if (!current().hasRemaining()) {
-          // try the next chunk if this one has no more
-          currentReadingChunk++;
-          current().rewind();
-          if (!current().hasRemaining()) {
-            return -1;
-          }
-        }
-      } catch (IndexOutOfBoundsException e) {
-        return -1;
-      }
-      return current().get() & 0xFF;
-    }
-
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    public int read(byte[] bytes, int off, int len)
-        throws IOException {
-      try {
-        if (!current().hasRemaining()) {
-          // try the next chunk if this one has no more
-          currentReadingChunk++;
-          current().rewind();
-          if (!current().hasRemaining()) {
-            return -1;
-          }
-        }
-      } catch (IndexOutOfBoundsException e) {
-        // don't go past the end!
-        return -1;
-      }
-
-      // when looping through our chunks:
-      // bytes = our input array (never changed)
-      // len = remaining bytes in current chunk, up to chunk size
-      // off = chunk size * current chunk id
-      int lengthThisChunk = Math.min(len, current().remaining());
-      off = currentReadingChunk * chunkSize;
-      current().get(bytes, off, lengthThisChunk);
-      numBytesRead += lengthThisChunk;
-
-      if (numBytesRead > 0 && numBytesRead < bytes.length) {
-        read(bytes, currentReadingChunk * chunkSize, len);
-      }
-
-      return numBytesRead;
     }
   }
 
