@@ -39,7 +39,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.MappedByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -81,7 +80,7 @@ public class S3OutputStream extends PositionOutputStream {
     this.partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
-    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, this.partSize, 5); // TODO
+    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, this.partSize / 5, 5); // TODO
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
@@ -99,15 +98,17 @@ public class S3OutputStream extends PositionOutputStream {
     buffer.write(b, off, len);
   }
 
-  private void uploadPart(final int size) throws IOException {
-    log.info("Uploading part of size {} for bucket '{}' key '{}'", size, bucket, key);
+  private void uploadParts() throws IOException {
+    log.info("Uploading all parts for bucket '{}' key '{}'", bucket, key);
     if (multiPartUpload == null) {
-      log.info("New multi-part upload for bucket '{}' key '{}'", bucket, key);
+      log.info("Instantiating new multi-part upload for bucket '{}' key '{}'", bucket, key);
       multiPartUpload = newMultipartUpload();
     }
     try {
-      // TODO
-//      multiPartUpload.uploadPart(new ByteBufferBackedInputStream(buffer), size);
+      for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : buffer.getInputStreams()) {
+        stream.rewind();
+        multiPartUpload.uploadPart(stream, partSize);
+      }
     } catch (Exception e) {
       if (multiPartUpload != null) {
         multiPartUpload.abort();
@@ -131,11 +132,7 @@ public class S3OutputStream extends PositionOutputStream {
     try {
       // TODO should maybe apply compression inside the ChunkedDiskBuffer instead of here
       compressionType.finalize(compressionFilter);
-
-      // TODO
-//      if (buffer.hasRemaining()) {
-//        uploadPart(buffer.position());
-//      }
+      uploadParts();
       multiPartUpload.complete();
       log.info("Upload complete for bucket '{}' key '{}'", bucket, key);
     } catch (Exception e) {
