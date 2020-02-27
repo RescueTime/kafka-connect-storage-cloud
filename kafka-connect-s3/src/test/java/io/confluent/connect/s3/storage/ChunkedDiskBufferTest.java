@@ -26,14 +26,14 @@ public class ChunkedDiskBufferTest {
   @Before
   public void setup() {
     buffer = new ChunkedDiskBuffer("myBucket", "myKey", 10);
-    File bufferFile = new java.io.File(buffer.streams.get(0).currentChunk().filename());
+    File bufferFile = new java.io.File(buffer.streams.get(0).filename());
     assertTrue(bufferFile.exists());
   }
 
   @After
   public void tearDown() throws Exception {
     buffer.close();
-    File bufferFile = new java.io.File(buffer.streams.get(0).chunks.get(0).filename());
+    File bufferFile = new java.io.File(buffer.streams.get(0).filename());
     assertFalse(bufferFile.exists());
   }
 
@@ -48,7 +48,7 @@ public class ChunkedDiskBufferTest {
     ChunkedDiskBuffer.ByteBufferBackedInputStream stream = buffer.getInputStreams().get(0);
     stream.rewind();
     InputStreamReader inputStreamReader = new InputStreamReader(stream);
-    File bufferFile = new java.io.File(buffer.streams.get(0).currentChunk().filename());
+    File bufferFile = new java.io.File(buffer.streams.get(0).filename());
     char[] charArray = new char[(int) bufferFile.length()];
     int numRead = inputStreamReader.read(charArray);
     assertEquals(10, numRead);
@@ -61,41 +61,17 @@ public class ChunkedDiskBufferTest {
     for (int i = 0; i < 29; i++) {
       buffer.write('x');
     }
-    assertEquals(2, buffer.streams.get(0).chunks.size());
-    assertEquals(1, buffer.streams.get(1).chunks.size());
+    assertEquals(3, buffer.streams.size());
     // make sure buffer can start a new chunk when needed
     buffer.write(0);
-    assertEquals(2, buffer.streams.get(1).chunks.size());
+    assertEquals(4, buffer.streams.size());
   }
 
   @Test
   public void testWritingArray() throws Exception {
     byte[] array = new byte[]{0x1, 0x2, 0x3, 0x4};
     buffer.write(array, 0, 4);
-    assertEquals(1, buffer.streams.get(0).chunks.size());
-  }
-
-  @Test
-  public void testWritingMultiChunkedArray() throws Exception {
-    for (int i = 0; i < 5; i++) {
-      byte[] array = new byte[10];
-      Arrays.fill(array, (byte) ('t' + i));
-      buffer.write(array, 0, 10);
-    }
-
-    assertEquals(3, buffer.streams.size());
-
-    ChunkedDiskBuffer.ByteBufferBackedInputStream stream = buffer.getInputStreams().get(0);
-    stream.rewind();
-    InputStreamReader inputStreamReader = new InputStreamReader(stream);
-    char[] charArray = new char[20];
-    int numRead = inputStreamReader.read(charArray);
-    assertEquals(20, numRead);
-    log.info("bufferFile contents: {}", charArray);
-    assertEquals('t', charArray[0]);
-    assertEquals('t', charArray[5]);
-    assertEquals('u', charArray[10]);
-    assertEquals('u', charArray[14]);
+    assertEquals(1, buffer.streams.size());
   }
 
   @Test
@@ -106,16 +82,13 @@ public class ChunkedDiskBufferTest {
       buffer.write(array, 0, 10);
     }
 
-    assertEquals(2, buffer.getInputStreams().get(0).chunks.size());
-
-    List<ChunkedDiskBuffer.ByteBufferBackedInputStream> streams = buffer.getInputStreams();
-    assertEquals(5, streams.size());
+    assertEquals(10, buffer.getInputStreams().size());
 
     char letter = 96;   // a = 97
-    for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : streams) {
+    for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : buffer.getInputStreams()) {
       stream.rewind();
       InputStreamReader inputStreamReader = new InputStreamReader(stream);
-      char[] charArray = new char[20];
+      char[] charArray = new char[10];
       int numRead = inputStreamReader.read(charArray);
       log.info("bufferFile numRead {}, contents: {}", numRead, charArray);
       for (int i = 0; i < charArray.length; i++) {
@@ -124,7 +97,7 @@ public class ChunkedDiskBufferTest {
         }
         assertEquals(letter, charArray[i]);
       }
-      assertEquals(20, numRead);
+      assertEquals(10, numRead);
     }
   }
 
@@ -137,18 +110,17 @@ public class ChunkedDiskBufferTest {
     }
 
     List<ChunkedDiskBuffer.ByteBufferBackedInputStream> streams = buffer.getInputStreams();
-    assertEquals(5, streams.size());
+    assertEquals(10, streams.size());
 
     // now check all 5 streams that we should have
     for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : streams) {
-      assertEquals(2, stream.chunks.size());
       stream.rewind();
       MD5DigestCalculatingInputStream thisMD5stream = new MD5DigestCalculatingInputStream(stream);
       InputStreamReader thisInputStreamReader = new InputStreamReader(thisMD5stream);
-      char[] thisCharArray = new char[20];
+      char[] thisCharArray = new char[10];
       int thisNumRead = thisInputStreamReader.read(thisCharArray);
       log.info("MD5 digest of this stream: {}", thisMD5stream.getMd5Digest());
-      assertEquals(20, thisNumRead);
+      assertEquals(10, thisNumRead);
     }
 
   }
