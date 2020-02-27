@@ -35,17 +35,15 @@ public class ChunkedDiskBuffer {
 
   private String fileNameRoot;
   List<ByteBufferBackedInputStream> streams = new ArrayList<>();
-  private int chunkSize;
-  private int chunksPerStream;
+  private int partSize;
 
-  ChunkedDiskBuffer(String bucket, String key, int chunkSize, int chunksPerStream) {
-    this.chunkSize = chunkSize;
-    this.chunksPerStream = chunksPerStream;
+  ChunkedDiskBuffer(String bucket, String key, int partSize) {
+    this.partSize = partSize;
     // TODO configurable location for tmp
     fileNameRoot = "/tmp/"
         + bucket.replaceAll("/", "-") + "-"
         + key.replaceAll("/", "-") + ".buffer";
-    streams.add(new ByteBufferBackedInputStream());
+    streams.add(new ByteBufferBackedInputStream(streams.size()));
   }
 
   void close() throws IOException {
@@ -58,13 +56,10 @@ public class ChunkedDiskBuffer {
     ByteBufferBackedInputStream currentStream = streams.get(streams.size() - 1);
     MappedByteBuffer currentBuffer = currentStream.currentBuffer();
     currentBuffer.put((byte) b);
+    currentStream.numBytesWritten++;
     if (!currentBuffer.hasRemaining()) {
-      // start a new chunk
-      if (isNewStreamNeeded()) {
-        streams.add(new ByteBufferBackedInputStream());
-      } else {
-        currentStream.addChunk();
-      }
+      // start a new stream
+      streams.add(new ByteBufferBackedInputStream(streams.size()));
     }
   }
 
@@ -84,20 +79,13 @@ public class ChunkedDiskBuffer {
     if (currentBuffer.remaining() < len) {
       int firstPart = currentBuffer.remaining();
       currentBuffer.put(b, off, firstPart);
-      if (isNewStreamNeeded()) {
-        streams.add(new ByteBufferBackedInputStream());
-      } else {
-        currentStream.addChunk();
-      }
+      currentStream.numBytesWritten += firstPart;
+      streams.add(new ByteBufferBackedInputStream(streams.size()));
       write(b, off + firstPart, len - firstPart);
     } else {
       currentBuffer.put(b, off, len);
+      currentStream.numBytesWritten += len;
     }
-  }
-
-  private boolean isNewStreamNeeded() {
-    ByteBufferBackedInputStream currentStream = streams.get(streams.size() - 1);
-    return currentStream.chunks.size() >= chunksPerStream;
   }
 
   private static boolean outOfRange(int off, int len) {
@@ -109,15 +97,17 @@ public class ChunkedDiskBuffer {
   }
 
   public class Chunk {
+    private int streamID;
     private int id;
     MappedByteBuffer buffer;
     private File bufferFile;
     private RandomAccessFile bufferRandomAccessFile;
     private FileChannel bufferFileChannel;
 
-    Chunk(int id) {
+    Chunk(int streamID, int id) {
       // https://www.tothenew.com/blog/handling-large-files-using-javanio-mappedbytebuffer/
       // https://howtodoinjava.com/java7/nio/memory-mapped-files-mappedbytebuffer/
+      this.streamID = streamID;
       this.id = id;
       log.info("Trying to init new MappedByteBuffer Chunk on {}", filename());
       try {
@@ -130,7 +120,7 @@ public class ChunkedDiskBuffer {
           bufferRandomAccessFile = new RandomAccessFile(bufferFile, "rw");
           bufferFileChannel = bufferRandomAccessFile.getChannel();
           this.buffer = bufferFileChannel.map(
-              FileChannel.MapMode.READ_WRITE, 0, chunkSize);
+              FileChannel.MapMode.READ_WRITE, 0, partSize);
         } else {
           throw new RuntimeException("File could not be created: " + filename());
         }
@@ -145,7 +135,7 @@ public class ChunkedDiskBuffer {
     }
 
     String filename() {
-      return ChunkedDiskBuffer.this.fileNameRoot + "." + id;
+      return ChunkedDiskBuffer.this.fileNameRoot + "." + streamID + "." + id;
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
@@ -173,17 +163,21 @@ public class ChunkedDiskBuffer {
   @SuppressWarnings({"RedundantThrows", "NullableProblems"})
   public class ByteBufferBackedInputStream extends InputStream {
 
+    int streamID;
     int currentChunk = -1;
+    int numBytesWritten = 0;
     int numBytesRead = 0;
     List<Chunk> chunks = new ArrayList<>();
 
-    ByteBufferBackedInputStream() {
+    ByteBufferBackedInputStream(int streamID) {
+      this.streamID = streamID;
       addChunk();
       currentBuffer().rewind();
     }
 
     void rewind() {
-      this.currentChunk = 0;
+      currentChunk = 0;
+      numBytesRead = 0;
       for (Chunk c : chunks) {
         c.buffer.rewind();
       }
@@ -198,7 +192,7 @@ public class ChunkedDiskBuffer {
     }
 
     void addChunk() {
-      chunks.add(new Chunk(chunks.size()));
+      chunks.add(new Chunk(streamID, chunks.size()));
       currentChunk++;
     }
 
@@ -213,12 +207,7 @@ public class ChunkedDiskBuffer {
     private boolean isBufferAtEnd() {
       try {
         if (!currentBuffer().hasRemaining()) {
-          // try the next chunk if this one has no more
-          currentChunk++;
-          currentBuffer().rewind();
-          if (!currentBuffer().hasRemaining()) {
-            return true;
-          }
+          return true;
         }
       } catch (IndexOutOfBoundsException e) {
         return true;
@@ -233,27 +222,21 @@ public class ChunkedDiskBuffer {
       return currentBuffer().get() & 0xFF;
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    public int read(byte[] bytes, int off, int len)
+    public int read(byte[] bytes, int off, int len) throws IOException {
+      if (off == 0) {
+        rewind();
+      }
+      return internalRead(bytes, off, len);
+    }
+
+    public int internalRead(byte[] bytes, int off, int len)
         throws IOException {
       if (isBufferAtEnd()) {
         return -1;
       }
-
-      // when looping through our chunks:
-      // bytes = our input array (never changed)
-      // len = remaining bytes in currentBuffer chunk, up to chunk size
-      // off = chunk size * currentBuffer chunk id
-      int lengthThisChunk = Math.min(len, currentBuffer().remaining());
-      off = currentChunk * chunkSize;
-      currentBuffer().get(bytes, off, lengthThisChunk);
-      numBytesRead += lengthThisChunk;
-
-      if (numBytesRead > 0 && numBytesRead < bytes.length) {
-        read(bytes, currentChunk * chunkSize, len);
-      }
-
-      return numBytesRead;
+      int numRead = Math.min(len, currentBuffer().remaining());
+      currentBuffer().get(bytes, off, numRead);
+      return numRead;
     }
   }
 

@@ -50,25 +50,21 @@ import java.util.List;
 public class S3OutputStream extends PositionOutputStream {
   private static final Logger log = LoggerFactory.getLogger(S3OutputStream.class);
   private final AmazonS3 s3;
-  private final S3SinkConnectorConfig connectorConfig;
   private final String bucket;
   private final String key;
   private final String ssea;
   private final SSECustomerKey sseCustomerKey;
   private final String sseKmsKeyId;
   private final ProgressListener progressListener;
-  private final int partSize;
   private final CannedAccessControlList cannedAcl;
   private boolean closed;
   private ChunkedDiskBuffer buffer;
   private MultipartUpload multiPartUpload;
   private final CompressionType compressionType;
   private volatile OutputStream compressionFilter;
-  private Long position;
 
   public S3OutputStream(String key, S3SinkConnectorConfig conf, AmazonS3 s3) {
     this.s3 = s3;
-    this.connectorConfig = conf;
     this.bucket = conf.getBucketName();
     this.key = key;
     this.ssea = conf.getSsea();
@@ -77,14 +73,15 @@ public class S3OutputStream extends PositionOutputStream {
         && StringUtils.isNotBlank(sseCustomerKeyConfig))
         ? new SSECustomerKey(sseCustomerKeyConfig) : null;
     this.sseKmsKeyId = conf.getSseKmsKeyId();
-    this.partSize = conf.getPartSize();
+    int partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
-    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, this.partSize / 5, 5); // TODO
+    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, partSize);
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
-    log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}", bucket, key, partSize);
+    log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}, compression type {}",
+        bucket, key, partSize, compressionType);
   }
 
   @Override
@@ -93,6 +90,7 @@ public class S3OutputStream extends PositionOutputStream {
     buffer.write((byte) b);
   }
 
+  @SuppressWarnings("NullableProblems")
   @Override
   public void write(byte[] b, int off, int len) throws IOException {
     buffer.write(b, off, len);
@@ -107,9 +105,11 @@ public class S3OutputStream extends PositionOutputStream {
     try {
       for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : buffer.getInputStreams()) {
         stream.rewind();
-        multiPartUpload.uploadPart(stream, partSize);
+        multiPartUpload.uploadPart(stream, stream.numBytesWritten);
       }
     } catch (Exception e) {
+      e.printStackTrace();
+      log.error("Exception uploading part: ", e);
       if (multiPartUpload != null) {
         multiPartUpload.abort();
         log.info("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
@@ -206,7 +206,7 @@ public class S3OutputStream extends PositionOutputStream {
     public MultipartUpload(String uploadId) {
       this.uploadId = uploadId;
       this.partETags = new ArrayList<>();
-      log.debug(
+      log.info(
           "Initiated multi-part upload for bucket '{}' key '{}' with id '{}'",
           bucket,
           key,
@@ -216,6 +216,9 @@ public class S3OutputStream extends PositionOutputStream {
 
     public void uploadPart(InputStream inputStream, int partSize) {
       int currentPartNumber = partETags.size() + 1;
+      log.info("Uploading part {} for id '{}', partSize {}",
+          currentPartNumber, uploadId, partSize);
+
       UploadPartRequest request = new UploadPartRequest()
           .withBucketName(bucket)
           .withKey(key)
@@ -225,12 +228,11 @@ public class S3OutputStream extends PositionOutputStream {
           .withPartNumber(currentPartNumber)
           .withPartSize(partSize)
           .withGeneralProgressListener(progressListener);
-      log.debug("Uploading part {} for id '{}'", currentPartNumber, uploadId);
       partETags.add(s3.uploadPart(request).getPartETag());
     }
 
     public void complete() {
-      log.debug("Completing multi-part upload for key '{}', id '{}'", key, uploadId);
+      log.info("Completing multi-part upload for key '{}', id '{}'", key, uploadId);
       CompleteMultipartUploadRequest completeRequest =
           new CompleteMultipartUploadRequest(bucket, key, uploadId, partETags);
       s3.completeMultipartUpload(completeRequest);
@@ -263,7 +265,7 @@ public class S3OutputStream extends PositionOutputStream {
   }
 
   public long getPos() {
-    return position;
+    return 0;
   }
 
 }

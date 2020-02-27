@@ -45,7 +45,7 @@ public class S3SinkConnectorTestBase extends StorageSinkTestBase {
   private static final Logger log = LoggerFactory.getLogger(S3SinkConnectorTestBase.class);
 
   protected static final String S3_TEST_URL = "http://127.0.0.1:8181";
-  protected static final String S3_TEST_BUCKET_NAME = "kafka.bucket";
+  protected static final String S3_TEST_BUCKET_NAME = "dev-spark-redshift-temp";
   protected static final Time SYSTEM_TIME = new SystemTime();
 
   protected S3SinkConnectorConfig connectorConfig;
@@ -77,6 +77,7 @@ public class S3SinkConnectorTestBase extends StorageSinkTestBase {
     props.put(PartitionerConfig.PATH_FORMAT_CONFIG, "'year'=YYYY_'month'=MM_'day'=dd_'hour'=HH");
     props.put(PartitionerConfig.LOCALE_CONFIG, "en");
     props.put(PartitionerConfig.TIMEZONE_CONFIG, "America/Los_Angeles");
+    props.put(S3SinkConnectorConfig.PART_SIZE_CONFIG, String.valueOf(1024));
     return props;
   }
 
@@ -85,7 +86,6 @@ public class S3SinkConnectorTestBase extends StorageSinkTestBase {
   public void setUp() throws Exception {
     super.setUp();
     connectorConfig = PowerMockito.spy(new S3SinkConnectorConfig(properties));
-    PowerMockito.doReturn(1024).when(connectorConfig).getPartSize();
     topicsDir = connectorConfig.getString(StorageCommonConfig.TOPICS_DIR_CONFIG);
     parsedConfig = new HashMap<>(connectorConfig.plainValues());
     compatibility = StorageSchemaCompatibility.getCompatibility(StorageSinkConnectorConfig.SCHEMA_COMPATIBILITY_CONFIG);

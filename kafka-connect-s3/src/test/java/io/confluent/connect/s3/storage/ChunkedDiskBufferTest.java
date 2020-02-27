@@ -1,5 +1,6 @@
 package io.confluent.connect.s3.storage;
 
+import com.amazonaws.services.s3.internal.MD5DigestCalculatingInputStream;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -24,7 +25,7 @@ public class ChunkedDiskBufferTest {
 
   @Before
   public void setup() {
-    buffer = new ChunkedDiskBuffer("myBucket", "myKey", 10, 2);
+    buffer = new ChunkedDiskBuffer("myBucket", "myKey", 10);
     File bufferFile = new java.io.File(buffer.streams.get(0).currentChunk().filename());
     assertTrue(bufferFile.exists());
   }
@@ -43,7 +44,7 @@ public class ChunkedDiskBufferTest {
 
   @Test
   public void testWriting() throws Exception {
-    buffer.write((int) 'p');
+    buffer.write('p');
     ChunkedDiskBuffer.ByteBufferBackedInputStream stream = buffer.getInputStreams().get(0);
     stream.rewind();
     InputStreamReader inputStreamReader = new InputStreamReader(stream);
@@ -58,7 +59,7 @@ public class ChunkedDiskBufferTest {
   @Test
   public void testWritingMultipleChunks() throws Exception {
     for (int i = 0; i < 29; i++) {
-      buffer.write((int) 'x');
+      buffer.write('x');
     }
     assertEquals(2, buffer.streams.get(0).chunks.size());
     assertEquals(1, buffer.streams.get(1).chunks.size());
@@ -110,7 +111,7 @@ public class ChunkedDiskBufferTest {
     List<ChunkedDiskBuffer.ByteBufferBackedInputStream> streams = buffer.getInputStreams();
     assertEquals(5, streams.size());
 
-    char letter = 96;
+    char letter = 96;   // a = 97
     for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : streams) {
       stream.rewind();
       InputStreamReader inputStreamReader = new InputStreamReader(stream);
@@ -125,6 +126,31 @@ public class ChunkedDiskBufferTest {
       }
       assertEquals(20, numRead);
     }
+  }
+
+  @Test
+  public void testMD5Digestion() throws Exception {
+    for (int i = 0; i < 10; i++) {
+      byte[] array = new byte[10];
+      Arrays.fill(array, (byte) ('a' + i));
+      buffer.write(array, 0, 10);
+    }
+
+    List<ChunkedDiskBuffer.ByteBufferBackedInputStream> streams = buffer.getInputStreams();
+    assertEquals(5, streams.size());
+
+    // now check all 5 streams that we should have
+    for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : streams) {
+      assertEquals(2, stream.chunks.size());
+      stream.rewind();
+      MD5DigestCalculatingInputStream thisMD5stream = new MD5DigestCalculatingInputStream(stream);
+      InputStreamReader thisInputStreamReader = new InputStreamReader(thisMD5stream);
+      char[] thisCharArray = new char[20];
+      int thisNumRead = thisInputStreamReader.read(thisCharArray);
+      log.info("MD5 digest of this stream: {}", thisMD5stream.getMd5Digest());
+      assertEquals(20, thisNumRead);
+    }
+
   }
 
 }
