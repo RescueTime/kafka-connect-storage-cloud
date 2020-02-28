@@ -73,15 +73,14 @@ public class S3OutputStream extends PositionOutputStream {
         && StringUtils.isNotBlank(sseCustomerKeyConfig))
         ? new SSECustomerKey(sseCustomerKeyConfig) : null;
     this.sseKmsKeyId = conf.getSseKmsKeyId();
-    int partSize = conf.getPartSize();
     this.cannedAcl = conf.getCannedAcl();
     this.closed = false;
-    this.buffer = new ChunkedDiskBuffer(this.bucket, this.key, partSize);
+    this.buffer = new ChunkedDiskBuffer(this.key, conf);
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
     log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}, compression type {}",
-        bucket, key, partSize, compressionType);
+        bucket, key, conf.getPartSize(), compressionType);
   }
 
   @Override

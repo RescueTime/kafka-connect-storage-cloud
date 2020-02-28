@@ -77,7 +77,7 @@ public class S3SinkConnectorTestBase extends StorageSinkTestBase {
     props.put(PartitionerConfig.PATH_FORMAT_CONFIG, "'year'=YYYY_'month'=MM_'day'=dd_'hour'=HH");
     props.put(PartitionerConfig.LOCALE_CONFIG, "en");
     props.put(PartitionerConfig.TIMEZONE_CONFIG, "America/Los_Angeles");
-    props.put(S3SinkConnectorConfig.PART_SIZE_CONFIG, String.valueOf(1024));
+    props.put(S3SinkConnectorConfig.PART_SIZE_CONFIG, String.valueOf(5242880));
     return props;
   }
 

@@ -90,6 +90,13 @@ public class S3SinkConnectorConfigTest extends S3SinkConnectorTestBase {
   }
 
   @Test
+  public void testS3BufferTmpDir() {
+    properties.put(S3SinkConnectorConfig.S3_BUFFER_TMP_DIR, "/arbitary/tmp/dir");
+    connectorConfig = new S3SinkConnectorConfig(properties);
+    assertEquals("/arbitary/tmp/dir", connectorConfig.getBufferTmpDir());
+  }
+
+  @Test
   public void testUndefinedURL() {
     properties.remove(StorageCommonConfig.STORE_URL_CONFIG);
     connectorConfig = new S3SinkConnectorConfig(properties);

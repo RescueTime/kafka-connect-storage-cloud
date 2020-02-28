@@ -15,6 +15,7 @@
 
 package io.confluent.connect.s3.storage;
 
+import io.confluent.connect.s3.S3SinkConnectorConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.misc.Cleaner;
@@ -37,11 +38,10 @@ public class ChunkedDiskBuffer {
   List<ByteBufferBackedInputStream> streams = new ArrayList<>();
   private int partSize;
 
-  ChunkedDiskBuffer(String bucket, String key, int partSize) {
-    this.partSize = partSize;
-    // TODO configurable location for tmp
-    fileNameRoot = "/tmp/"
-        + bucket.replaceAll("/", "-") + "-"
+  ChunkedDiskBuffer(String key, S3SinkConnectorConfig conf) {
+    this.partSize = conf.getPartSize();
+    fileNameRoot = conf.getBufferTmpDir() + "/"
+        + conf.getBucketName().replaceAll("/", "-") + "-"
         + key.replaceAll("/", "-") + ".buffer";
     streams.add(new ByteBufferBackedInputStream(streams.size()));
   }
@@ -64,7 +64,6 @@ public class ChunkedDiskBuffer {
   }
 
   public void write(byte[] b, int off, int len) throws IOException {
-    log.info("Writing an array of bytes");
     if (b == null) {
       throw new NullPointerException();
     } else if (outOfRange(off, b.length) || len < 0 || outOfRange(off + len, b.length)) {

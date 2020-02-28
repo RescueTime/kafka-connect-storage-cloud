@@ -1,6 +1,7 @@
 package io.confluent.connect.s3.storage;
 
 import com.amazonaws.services.s3.internal.MD5DigestCalculatingInputStream;
+import io.confluent.connect.s3.S3SinkConnectorTestBase;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -17,15 +18,16 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-public class ChunkedDiskBufferTest {
+public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
 
   private static final Logger log = LoggerFactory.getLogger(ChunkedDiskBufferTest.class);
 
   private ChunkedDiskBuffer buffer;
 
   @Before
-  public void setup() {
-    buffer = new ChunkedDiskBuffer("myBucket", "myKey", 10);
+  public void setup() throws Exception {
+    super.setUp();
+    buffer = new ChunkedDiskBuffer("myKey", connectorConfig);
     File bufferFile = new java.io.File(buffer.streams.get(0).filename());
     assertTrue(bufferFile.exists());
   }

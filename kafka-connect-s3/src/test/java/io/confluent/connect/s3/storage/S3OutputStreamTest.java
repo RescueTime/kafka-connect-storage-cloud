@@ -27,6 +27,7 @@ public class S3OutputStreamTest extends S3SinkConnectorTestBase {
     Map<String, String> props = super.createProps();
     props.put(S3SinkConnectorConfig.REGION_CONFIG, "us-east-1");
     props.put(S3SinkConnectorConfig.PART_SIZE_CONFIG, String.valueOf(25 * 1024 * 1024));
+    props.put(S3SinkConnectorConfig.S3_BUFFER_TMP_DIR, "/mnt/tmp");
     return props;
   }
 
