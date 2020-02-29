@@ -28,14 +28,14 @@ public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
   public void setup() throws Exception {
     super.setUp();
     buffer = new ChunkedDiskBuffer("myKey", connectorConfig);
-    File bufferFile = new java.io.File(buffer.streams.get(0).filename());
+    File bufferFile = new java.io.File(buffer.parts.get(0).chunks.get(0).filename());
     assertTrue(bufferFile.exists());
   }
 
   @After
   public void tearDown() throws Exception {
     buffer.close();
-    File bufferFile = new java.io.File(buffer.streams.get(0).filename());
+    File bufferFile = new java.io.File(buffer.parts.get(0).chunks.get(0).filename());
     assertFalse(bufferFile.exists());
   }
 
@@ -47,33 +47,58 @@ public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
   @Test
   public void testWriting() throws Exception {
     buffer.write('p');
-    ChunkedDiskBuffer.ByteBufferBackedInputStream stream = buffer.getInputStreams().get(0);
-    stream.rewind();
-    InputStreamReader inputStreamReader = new InputStreamReader(stream);
-    File bufferFile = new java.io.File(buffer.streams.get(0).filename());
+    ChunkedDiskBuffer.UploadPart part = buffer.getUploadParts().get(0);
+    part.rewind();
+    InputStreamReader inputStreamReader = new InputStreamReader(part.getInputStream());
+    File bufferFile = new java.io.File(buffer.parts.get(0).chunks.get(0).filename());
     char[] charArray = new char[(int) bufferFile.length()];
     int numRead = inputStreamReader.read(charArray);
-    assertEquals(10, numRead);
-    log.info("bufferFile contents: {}", charArray);
+    assertEquals(8192, numRead);
+    assertEquals(10240, bufferFile.length());
+    log.info("bufferFile size {} contents: {}", charArray.length, charArray);
     assertEquals('p', charArray[0]);
   }
 
   @Test
   public void testWritingMultipleChunks() throws Exception {
-    for (int i = 0; i < 29; i++) {
+    for (int i = 0; i < 10239; i++) {
       buffer.write('x');
     }
-    assertEquals(3, buffer.streams.size());
+    assertEquals(1, buffer.parts.size());
+    assertEquals(1, buffer.currentPart().chunks.size());
+    assertEquals(10239, buffer.currentPart().numBytesWritten);
     // make sure buffer can start a new chunk when needed
     buffer.write(0);
-    assertEquals(4, buffer.streams.size());
+    assertEquals(1, buffer.parts.get(0).chunks.size());
+    assertEquals(10240, buffer.parts.get(0).numBytesWritten);
+    buffer.write(0);
+    assertEquals(2, buffer.parts.get(0).chunks.size());
+  }
+
+  @Test
+  public void testWritingMultipleChunksWithArrays() throws Exception {
+    for (int i = 0; i < 1024; i++) {
+      byte[] array = new byte[10];
+      Arrays.fill(array, (byte) ('a' + i));
+      buffer.write(array, 0, 10);
+    }
+    assertEquals(1, buffer.parts.size());
+    assertEquals(1, buffer.currentPart().chunks.size());
+    assertEquals(10240, buffer.currentPart().numBytesWritten);
+    // make sure buffer can start a new chunk when needed
+    byte[] array = new byte[10];
+    Arrays.fill(array, (byte) ('z'));
+    buffer.write(array, 0, 10);
+
+    assertEquals(2, buffer.parts.get(0).chunks.size());
+    assertEquals(10250, buffer.parts.get(0).numBytesWritten);
   }
 
   @Test
   public void testWritingArray() throws Exception {
     byte[] array = new byte[]{0x1, 0x2, 0x3, 0x4};
     buffer.write(array, 0, 4);
-    assertEquals(1, buffer.streams.size());
+    assertEquals(1, buffer.parts.size());
   }
 
   @Test
@@ -84,12 +109,12 @@ public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
       buffer.write(array, 0, 10);
     }
 
-    assertEquals(10, buffer.getInputStreams().size());
+    assertEquals(1, buffer.getUploadParts().size());
 
     char letter = 96;   // a = 97
-    for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : buffer.getInputStreams()) {
-      stream.rewind();
-      InputStreamReader inputStreamReader = new InputStreamReader(stream);
+    for (ChunkedDiskBuffer.UploadPart part : buffer.getUploadParts()) {
+      part.rewind();
+      InputStreamReader inputStreamReader = new InputStreamReader(part.getInputStream());
       char[] charArray = new char[10];
       int numRead = inputStreamReader.read(charArray);
       log.info("bufferFile numRead {}, contents: {}", numRead, charArray);
@@ -111,13 +136,13 @@ public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
       buffer.write(array, 0, 10);
     }
 
-    List<ChunkedDiskBuffer.ByteBufferBackedInputStream> streams = buffer.getInputStreams();
-    assertEquals(10, streams.size());
+    List<ChunkedDiskBuffer.UploadPart> parts = buffer.getUploadParts();
+    assertEquals(1, parts.size());
 
     // now check all 5 streams that we should have
-    for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : streams) {
-      stream.rewind();
-      MD5DigestCalculatingInputStream thisMD5stream = new MD5DigestCalculatingInputStream(stream);
+    for (ChunkedDiskBuffer.UploadPart part : parts) {
+      part.rewind();
+      MD5DigestCalculatingInputStream thisMD5stream = new MD5DigestCalculatingInputStream(part.getInputStream());
       InputStreamReader thisInputStreamReader = new InputStreamReader(thisMD5stream);
       char[] thisCharArray = new char[10];
       int thisNumRead = thisInputStreamReader.read(thisCharArray);

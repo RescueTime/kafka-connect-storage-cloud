@@ -85,7 +85,6 @@ public class S3OutputStream extends PositionOutputStream {
 
   @Override
   public void write(int b) throws IOException {
-    log.info("Writing a single byte");
     buffer.write((byte) b);
   }
 
@@ -102,9 +101,9 @@ public class S3OutputStream extends PositionOutputStream {
       multiPartUpload = newMultipartUpload();
     }
     try {
-      for (ChunkedDiskBuffer.ByteBufferBackedInputStream stream : buffer.getInputStreams()) {
-        stream.rewind();
-        multiPartUpload.uploadPart(stream, stream.numBytesWritten);
+      for (ChunkedDiskBuffer.UploadPart part : buffer.getUploadParts()) {
+        part.rewind();
+        multiPartUpload.uploadPart(part.getInputStream(), part.numBytesWritten);
       }
     } catch (Exception e) {
       e.printStackTrace();
@@ -215,8 +214,8 @@ public class S3OutputStream extends PositionOutputStream {
 
     public void uploadPart(InputStream inputStream, int partSize) {
       int currentPartNumber = partETags.size() + 1;
-      log.info("Uploading part {} for id '{}', partSize {}",
-          currentPartNumber, uploadId, partSize);
+      log.info("Uploading part {} of size {} for id '{}'",
+          currentPartNumber, partSize, uploadId);
 
       UploadPartRequest request = new UploadPartRequest()
           .withBucketName(bucket)
