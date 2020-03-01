@@ -90,10 +90,12 @@ public class S3SinkConnectorConfigTest extends S3SinkConnectorTestBase {
   }
 
   @Test
-  public void testS3BufferTmpDir() {
+  public void testS3BufferSettings() {
     properties.put(S3SinkConnectorConfig.S3_BUFFER_TMP_DIR, "/arbitary/tmp/dir");
+    properties.put(S3SinkConnectorConfig.S3_BUFFER_CHUNK_SIZE, "12345");
     connectorConfig = new S3SinkConnectorConfig(properties);
     assertEquals("/arbitary/tmp/dir", connectorConfig.getBufferTmpDir());
+    assertEquals(12345, connectorConfig.getS3BufferChunkSize());
   }
 
   @Test

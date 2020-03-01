@@ -38,10 +38,11 @@ public class ChunkedDiskBuffer {
   private String fileNameRoot;
   Vector<UploadPart> parts = new Vector<>();
   private int partSize;
-  private int chunkSize = 1024 * 10;  // TODO configurable?
+  private int chunkSize;
 
   ChunkedDiskBuffer(String key, S3SinkConnectorConfig config) {
     this.partSize = config.getPartSize();
+    this.chunkSize = config.getS3BufferChunkSize();
     fileNameRoot = config.getBufferTmpDir() + "/"
         + config.getBucketName().replaceAll("/", "-") + "-"
         + key.replaceAll("/", "-") + ".buffer";

@@ -69,6 +69,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
   // S3 Group
   public static final String S3_BUCKET_CONFIG = "s3.bucket.name";
   public static final String S3_BUFFER_TMP_DIR = "s3.buffer.tmp";
+  public static final String S3_BUFFER_CHUNK_SIZE = "s3.buffer.chunksize";
 
   public static final String SSEA_CONFIG = "s3.ssea.name";
   public static final String SSEA_DEFAULT = "";
@@ -230,6 +231,14 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           "/tmp",
           Importance.MEDIUM,
           "S3 Buffer Tmp Dir"
+      );
+
+      configDef.define(
+          S3_BUFFER_CHUNK_SIZE,
+          Type.INT,
+          10240,
+          Importance.MEDIUM,
+          "S3 Buffer Chunk Size"
       );
 
       configDef.define(
@@ -500,6 +509,10 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
   public String getBufferTmpDir() {
     return getString(S3_BUFFER_TMP_DIR);
+  }
+
+  public int getS3BufferChunkSize() {
+    return getInt(S3_BUFFER_CHUNK_SIZE);
   }
 
   public String getSsea() {
