@@ -36,6 +36,8 @@ import org.apache.parquet.io.PositionOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -96,6 +98,29 @@ public class S3OutputStream extends PositionOutputStream {
 
   private void uploadParts() throws IOException {
     log.info("Uploading all parts for bucket '{}' key '{}'", bucket, key);
+
+    // TODO remove copy file for prod
+    FileOutputStream outputStream = null;
+    try {
+      File copyFile = new File(buffer.fileNameRoot + ".copy");
+      if (copyFile.exists()) {
+        copyFile.delete();
+      }
+      copyFile.createNewFile();
+      outputStream = new FileOutputStream(copyFile);
+      for (ChunkedDiskBuffer.UploadPart part : buffer.getUploadParts()) {
+        byte[] buf = new byte[part.numBytesWritten];
+        part.rewind();
+        part.getInputStream().read(buf, 0, buf.length);
+        outputStream.write(buf);
+      }
+    } catch (Exception e) {
+      log.error("Got exception copying file: ", e);
+      throw e;
+    } finally {
+      outputStream.close();
+    }
+
     if (multiPartUpload == null) {
       log.info("Instantiating new multi-part upload for bucket '{}' key '{}'", bucket, key);
       multiPartUpload = newMultipartUpload();
@@ -114,6 +139,7 @@ public class S3OutputStream extends PositionOutputStream {
       }
       throw new IOException("Part upload failed: ", e.getCause());
     }
+
   }
 
   public void commit() throws IOException {

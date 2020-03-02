@@ -28,14 +28,14 @@ public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
   public void setup() throws Exception {
     super.setUp();
     buffer = new ChunkedDiskBuffer("myKey", connectorConfig);
-    File bufferFile = new java.io.File(buffer.parts.get(0).chunks.get(0).filename());
+    File bufferFile = new java.io.File(buffer.parts.get(0).filename());
     assertTrue(bufferFile.exists());
   }
 
   @After
   public void tearDown() throws Exception {
     buffer.close();
-    File bufferFile = new java.io.File(buffer.parts.get(0).chunks.get(0).filename());
+    File bufferFile = new java.io.File(buffer.parts.get(0).filename());
     assertFalse(bufferFile.exists());
   }
 
@@ -50,48 +50,13 @@ public class ChunkedDiskBufferTest extends S3SinkConnectorTestBase {
     ChunkedDiskBuffer.UploadPart part = buffer.getUploadParts().get(0);
     part.rewind();
     InputStreamReader inputStreamReader = new InputStreamReader(part.getInputStream());
-    File bufferFile = new java.io.File(buffer.parts.get(0).chunks.get(0).filename());
+    File bufferFile = new java.io.File(buffer.parts.get(0).filename());
     char[] charArray = new char[(int) bufferFile.length()];
     int numRead = inputStreamReader.read(charArray);
-    assertEquals(8192, numRead);
-    assertEquals(10240, bufferFile.length());
+    assertEquals(1, numRead);
+    assertEquals(1, bufferFile.length());
     log.info("bufferFile size {} contents: {}", charArray.length, charArray);
     assertEquals('p', charArray[0]);
-  }
-
-  @Test
-  public void testWritingMultipleChunks() throws Exception {
-    for (int i = 0; i < 10239; i++) {
-      buffer.write('x');
-    }
-    assertEquals(1, buffer.parts.size());
-    assertEquals(1, buffer.currentPart().chunks.size());
-    assertEquals(10239, buffer.currentPart().numBytesWritten);
-    // make sure buffer can start a new chunk when needed
-    buffer.write(0);
-    assertEquals(1, buffer.parts.get(0).chunks.size());
-    assertEquals(10240, buffer.parts.get(0).numBytesWritten);
-    buffer.write(0);
-    assertEquals(2, buffer.parts.get(0).chunks.size());
-  }
-
-  @Test
-  public void testWritingMultipleChunksWithArrays() throws Exception {
-    for (int i = 0; i < 1024; i++) {
-      byte[] array = new byte[10];
-      Arrays.fill(array, (byte) ('a' + i));
-      buffer.write(array, 0, 10);
-    }
-    assertEquals(1, buffer.parts.size());
-    assertEquals(1, buffer.currentPart().chunks.size());
-    assertEquals(10240, buffer.currentPart().numBytesWritten);
-    // make sure buffer can start a new chunk when needed
-    byte[] array = new byte[10];
-    Arrays.fill(array, (byte) ('z'));
-    buffer.write(array, 0, 10);
-
-    assertEquals(2, buffer.parts.get(0).chunks.size());
-    assertEquals(10250, buffer.parts.get(0).numBytesWritten);
   }
 
   @Test
