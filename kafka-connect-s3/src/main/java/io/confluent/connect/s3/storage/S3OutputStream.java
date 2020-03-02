@@ -108,12 +108,10 @@ public class S3OutputStream extends PositionOutputStream {
       }
       copyFile.createNewFile();
       outputStream = new FileOutputStream(copyFile);
-      for (ChunkedDiskBuffer.UploadPart part : buffer.getUploadParts()) {
-        byte[] buf = new byte[part.numBytesWritten];
-        part.rewind();
-        part.getInputStream().read(buf, 0, buf.length);
-        outputStream.write(buf);
-      }
+      byte[] buf = new byte[buffer.part.numBytesWritten];
+      buffer.part.rewind();
+      buffer.part.getInputStream().read(buf, 0, buf.length);
+      outputStream.write(buf);
     } catch (Exception e) {
       log.error("Got exception copying file: ", e);
       throw e;
@@ -126,10 +124,8 @@ public class S3OutputStream extends PositionOutputStream {
       multiPartUpload = newMultipartUpload();
     }
     try {
-      for (ChunkedDiskBuffer.UploadPart part : buffer.getUploadParts()) {
-        part.rewind();
-        multiPartUpload.uploadPart(part.getInputStream(), part.numBytesWritten);
-      }
+      buffer.part.rewind();
+      multiPartUpload.uploadPart(buffer.part.getInputStream(), buffer.part.numBytesWritten);
     } catch (Exception e) {
       e.printStackTrace();
       log.error("Exception uploading part: ", e);

@@ -26,15 +26,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.List;
-import java.util.Vector;
 
 @SuppressWarnings("RedundantThrows")
 public class ChunkedDiskBuffer {
   private static final Logger log = LoggerFactory.getLogger(ChunkedDiskBuffer.class);
 
   String fileNameRoot;
-  Vector<UploadPart> parts = new Vector<>();
+  UploadPart part;
   private int partSize;
 
   ChunkedDiskBuffer(String key, S3SinkConnectorConfig config) {
@@ -42,25 +40,19 @@ public class ChunkedDiskBuffer {
     fileNameRoot = config.getBufferTmpDir() + "/"
         + config.getBucketName().replaceAll("/", "-") + "-"
         + key.replaceAll("/", "-") + ".buffer";
-    parts.add(new UploadPart(parts.size()));
+    part = new UploadPart(0);
   }
 
   void close() throws IOException {
-    for (UploadPart part : parts) {
-      part.close();
-    }
-  }
-
-  UploadPart currentPart() {
-    return parts.lastElement();
+    part.close();
   }
 
   public void write(int b) throws IOException {
-    if (currentPart().remaining() < 1) {
-      parts.add(new UploadPart(parts.size()));
+    if (part.remaining() < 1) {
+      throw new RuntimeException("Attempt to write more data than configured S3 part size!");
     }
-    currentPart().outputStream.write((byte) b);
-    currentPart().numBytesWritten++;
+    part.outputStream.write((byte) b);
+    part.numBytesWritten++;
   }
 
   public void write(byte[] b, int off, int len) throws IOException {
@@ -74,16 +66,11 @@ public class ChunkedDiskBuffer {
 
     int totalWritten = 0;
     while (totalWritten < len) {
-      if (currentPart().remaining() < len) {
-        int firstPart = currentPart().remaining();
-        currentPart().outputStream.write(b, off, firstPart);
-        currentPart().numBytesWritten += firstPart;
-        totalWritten += firstPart;
-        // start a new part
-        parts.add(new UploadPart(parts.size()));
+      if (part.remaining() < len) {
+        throw new RuntimeException("Attempt to write more data than configured S3 part size!");
       } else {
-        currentPart().outputStream.write(b, off, len);
-        currentPart().numBytesWritten += len;
+        part.outputStream.write(b, off, len);
+        part.numBytesWritten += len;
         totalWritten += len;
       }
     }
@@ -91,10 +78,6 @@ public class ChunkedDiskBuffer {
 
   private static boolean outOfRange(int off, int len) {
     return off < 0 || off > len;
-  }
-
-  List<UploadPart> getUploadParts() {
-    return parts;
   }
 
   public class UploadPart {
