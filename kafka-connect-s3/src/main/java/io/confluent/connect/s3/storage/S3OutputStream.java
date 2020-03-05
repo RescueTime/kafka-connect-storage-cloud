@@ -135,31 +135,22 @@ public class S3OutputStream extends PositionOutputStream {
       log.error("Multipart upload failed to complete for bucket '{}' key '{}'", bucket, key);
       throw new DataException("Multipart upload failed to complete.", e);
     } finally {
-      closeBuffer();
-      internalClose();
+      close();
     }
   }
 
   @Override
   public void close() throws IOException {
-    internalClose();
-  }
-
-  private void internalClose() throws IOException {
     if (closed) {
       return;
     }
+    buffer.close();
     closed = true;
     if (multiPartUpload != null) {
       multiPartUpload.abort();
       log.info("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
     }
     super.close();
-  }
-
-  private void closeBuffer() throws IOException {
-    multiPartUpload = null;
-    buffer.close();
   }
 
   private ObjectMetadata newObjectMetadata() {

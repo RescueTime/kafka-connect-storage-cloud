@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-@SuppressWarnings("RedundantThrows")
 public class ChunkedDiskBuffer {
   private static final Logger log = LoggerFactory.getLogger(ChunkedDiskBuffer.class);
 
@@ -140,6 +139,11 @@ public class ChunkedDiskBuffer {
       if (bufferFile != null) {
         boolean deleted = bufferFile.delete();
         log.debug("closing buffer file {}, deleted? {}", filename(), deleted);
+        bufferFile = null;
+      }
+      if (outputStream != null) {
+        outputStream.close();
+        outputStream = null;
       }
     }
   }
