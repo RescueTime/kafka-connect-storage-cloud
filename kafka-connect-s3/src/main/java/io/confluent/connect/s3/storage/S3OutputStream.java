@@ -36,8 +36,6 @@ import org.apache.parquet.io.PositionOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -98,29 +96,7 @@ public class S3OutputStream extends PositionOutputStream {
 
   private void uploadParts() throws IOException {
     log.info("Uploading all parts for bucket '{}' key '{}'", bucket, key);
-
-    // TODO remove copy file for prod
-    FileOutputStream outputStream = null;
-    try {
-      File copyFile = new File(buffer.fileNameRoot + ".copy");
-      if (copyFile.exists()) {
-        copyFile.delete();
-      }
-      copyFile.createNewFile();
-      outputStream = new FileOutputStream(copyFile);
-      byte[] buf = new byte[buffer.part.numBytesWritten];
-      buffer.part.rewind();
-      buffer.part.getInputStream().read(buf, 0, buf.length);
-      outputStream.write(buf);
-    } catch (Exception e) {
-      log.error("Got exception copying file: ", e);
-      throw e;
-    } finally {
-      outputStream.close();
-    }
-
     if (multiPartUpload == null) {
-      log.info("Instantiating new multi-part upload for bucket '{}' key '{}'", bucket, key);
       multiPartUpload = newMultipartUpload();
     }
     try {
@@ -131,7 +107,7 @@ public class S3OutputStream extends PositionOutputStream {
       log.error("Exception uploading part: ", e);
       if (multiPartUpload != null) {
         multiPartUpload.abort();
-        log.info("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
+        log.error("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
       }
       throw new IOException("Part upload failed: ", e.getCause());
     }
