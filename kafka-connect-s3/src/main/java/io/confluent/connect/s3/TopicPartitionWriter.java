@@ -274,7 +274,7 @@ public class TopicPartitionWriter {
       writeRecord(projectedRecord);
       buffer.poll();
       if (rotateOnSize()) {
-        log.info(
+        log.debug(
             "Starting commit and rotation for topic partition {} with start offset {}",
             tp,
             startOffsets
@@ -293,7 +293,7 @@ public class TopicPartitionWriter {
       // committing files after waiting for rotateIntervalMs time but less than flush.size
       // records available
       if (recordCount > 0 && rotateOnTime(currentEncodedPartition, currentTimestamp, now)) {
-        log.info(
+        log.debug(
             "Committing files after waiting for rotateIntervalMs time but less than flush.size "
             + "records available."
         );
@@ -497,7 +497,7 @@ public class TopicPartitionWriter {
     currentSchemas.clear();
     recordCount = 0;
     baseRecordTimestamp = null;
-    log.info("Files committed to S3. Target commit offset for {} is {}", tp, offsetToCommit);
+    log.debug("Files committed to S3. Target commit offset for {} is {}", tp, offsetToCommit);
   }
 
   private void commitFile(String encodedPartition) {

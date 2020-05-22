@@ -79,7 +79,7 @@ public class S3OutputStream extends PositionOutputStream {
     this.progressListener = new ConnectProgressListener();
     this.multiPartUpload = null;
     this.compressionType = conf.getCompressionType();
-    log.info("Created S3OutputStream for bucket '{}' key '{}', partsize {}, compression type {}",
+    log.debug("Created S3OutputStream for bucket '{}' key '{}', partsize {}, compression type {}",
         bucket, key, conf.getPartSize(), compressionType);
   }
 
@@ -95,7 +95,7 @@ public class S3OutputStream extends PositionOutputStream {
   }
 
   private void uploadParts() throws IOException {
-    log.info("Uploading all parts for bucket '{}' key '{}'", bucket, key);
+    log.debug("Uploading all parts for bucket '{}' key '{}'", bucket, key);
     if (multiPartUpload == null) {
       multiPartUpload = newMultipartUpload();
     }
@@ -103,19 +103,16 @@ public class S3OutputStream extends PositionOutputStream {
       buffer.part.rewind();
       multiPartUpload.uploadPart(buffer.part.getInputStream(), buffer.part.numBytesWritten);
     } catch (Exception e) {
-      e.printStackTrace();
-      log.error("Exception uploading part: ", e);
       if (multiPartUpload != null) {
         multiPartUpload.abort();
-        log.error("Multipart upload aborted for bucket '{}' key '{}'.", bucket, key);
       }
-      throw new IOException("Part upload failed: ", e.getCause());
+      throw new IOException("Part upload failed: ", e);
     }
 
   }
 
   public void commit() throws IOException {
-    log.info("commit() called for bucket '{}' key '{}'", bucket, key);
+    log.debug("commit() called for bucket '{}' key '{}'", bucket, key);
     if (closed) {
       log.warn(
           "Tried to commit data for bucket '{}' key '{}' on a closed stream. Ignoring.",
@@ -130,9 +127,11 @@ public class S3OutputStream extends PositionOutputStream {
       compressionType.finalize(compressionFilter);
       uploadParts();
       multiPartUpload.complete();
-      log.info("Upload complete for bucket '{}' key '{}'", bucket, key);
+      log.debug("Upload complete for bucket '{}' key '{}'", bucket, key);
     } catch (Exception e) {
-      log.error("Multipart upload failed to complete for bucket '{}' key '{}'", bucket, key);
+      log.error("Exception uploading part on bucket '" + bucket + "' key '" + key + "': "
+          + e.getMessage() + "; " + e.getCause(), e);
+      e.printStackTrace();
       throw new DataException("Multipart upload failed to complete.", e);
     } finally {
       close();
@@ -192,7 +191,7 @@ public class S3OutputStream extends PositionOutputStream {
     public MultipartUpload(String uploadId) {
       this.uploadId = uploadId;
       this.partETags = new ArrayList<>();
-      log.info(
+      log.debug(
           "Initiated multi-part upload for bucket '{}' key '{}' with id '{}'",
           bucket,
           key,
@@ -202,7 +201,7 @@ public class S3OutputStream extends PositionOutputStream {
 
     public void uploadPart(InputStream inputStream, int partSize) {
       int currentPartNumber = partETags.size() + 1;
-      log.info("Uploading part {} of size {} for id '{}'",
+      log.debug("Uploading part {} of size {} for id '{}'",
           currentPartNumber, partSize, uploadId);
 
       UploadPartRequest request = new UploadPartRequest()
@@ -218,14 +217,13 @@ public class S3OutputStream extends PositionOutputStream {
     }
 
     public void complete() {
-      log.info("Completing multi-part upload for key '{}', id '{}'", key, uploadId);
+      log.debug("Completing multi-part upload for key '{}', id '{}'", key, uploadId);
       CompleteMultipartUploadRequest completeRequest =
           new CompleteMultipartUploadRequest(bucket, key, uploadId, partETags);
       s3.completeMultipartUpload(completeRequest);
     }
 
     public void abort() {
-      log.warn("Aborting multi-part upload with id '{}'", uploadId);
       try {
         s3.abortMultipartUpload(new AbortMultipartUploadRequest(bucket, key, uploadId));
       } catch (Exception e) {

@@ -66,7 +66,7 @@ public class ParquetRecordWriterProvider implements RecordWriterProvider<S3SinkC
         if (schema == null) {
           schema = record.valueSchema();
           try {
-            log.info("Opening record writer for: {}", filename);
+            log.debug("Opening record writer for: {}", filename);
             org.apache.avro.Schema avroSchema = avroData.fromConnectSchema(schema);
 
             s3ParquetOutputFile = new S3ParquetOutputFile(storage, filename);

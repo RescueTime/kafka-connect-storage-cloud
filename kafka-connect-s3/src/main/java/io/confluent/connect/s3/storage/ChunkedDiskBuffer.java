@@ -103,7 +103,7 @@ public class ChunkedDiskBuffer {
         }
       } catch (IOException ioe) {
         log.error("IOException opening file: " + filename());
-        throw new RuntimeException(ioe);
+        throw new RuntimeException(filename() + " could not be created", ioe);
       }
     }
 
@@ -120,7 +120,7 @@ public class ChunkedDiskBuffer {
         return new FileInputStream(bufferFile);
       } catch (FileNotFoundException fnfe) {
         log.error("FileNotFoundException getting inputStream: " + filename());
-        throw new RuntimeException(fnfe);
+        throw new RuntimeException(filename() + " not found", fnfe);
       }
     }
 
@@ -129,7 +129,7 @@ public class ChunkedDiskBuffer {
         outputStream.close();
       } catch (IOException ioe) {
         log.error("IOException closing outputStream: " + filename());
-        throw new RuntimeException(ioe);
+        throw new RuntimeException(filename() + " could not be closed", ioe);
       }
       numBytesRead = 0;
     }

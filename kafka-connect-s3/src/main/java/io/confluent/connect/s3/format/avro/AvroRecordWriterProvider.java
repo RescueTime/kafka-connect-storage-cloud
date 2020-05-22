@@ -64,7 +64,7 @@ public class AvroRecordWriterProvider implements RecordWriterProvider<S3SinkConn
         if (schema == null) {
           schema = record.valueSchema();
           try {
-            log.info("Opening record writer for: {}", filename);
+            log.debug("Opening record writer for: {}", filename);
             s3out = storage.create(filename, true);
             org.apache.avro.Schema avroSchema = avroData.fromConnectSchema(schema);
             writer.setCodec(CodecFactory.fromString(conf.getAvroCodec()));
